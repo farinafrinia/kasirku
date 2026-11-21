@@ -137,52 +137,82 @@ const Printer = (function () {
   // sendiri tanpa menyentuh kode. Lihat Printer.templateDefault &
   // Printer.panduanTemplate untuk daftar lengkap direktif/variabel.
   // ============================================================
-  // ---- Mode Mudah: susun template dari toggle klik-klik (tanpa kode) ----
-  // Didefinisikan di sini (sebelum dipakai) agar TEMPLATE_DEFAULT selalu
-  // identik dengan hasil toggle "semua aktif" — satu sumber kebenaran,
-  // tidak ada dua definisi template bawaan yang bisa melenceng satu sama lain.
-  function templateDariOpsi(opsi) {
-    const baris = [];
-    if (opsi.logo) baris.push('[LOGO]');
-    baris.push('[C][B][2]{{TOKO_NAMA}}');
-    if (opsi.alamat) baris.push('{{?TOKO_ALAMAT}}[C]{{TOKO_ALAMAT}}', '{{/TOKO_ALAMAT}}');
-    if (opsi.telepon) baris.push('{{?TOKO_WA}}[C]{{TOKO_WA}}', '{{/TOKO_WA}}');
-    baris.push('[=]');
-    baris.push('No. Struk : {{NOTA}}');
-    baris.push('Tanggal   : {{TANGGAL|tgl}} {{JAM}}');
-    baris.push('Kasir     : {{KASIR}}');
-    if (opsi.metode) baris.push('Bayar     : {{METODE}}');
-    baris.push('[-]');
-    baris.push('{{#ITEM}}', '{{NAMA}}', '[LR]{{QTY}} x {{HARGA|rp}}||{{SUB|rp}}', '{{/ITEM}}');
-    baris.push('[-]');
-    baris.push('[LR]Subtotal||{{SUBTOTAL|rp}}');
-    baris.push('{{?DISKON}}[LR]Diskon||-{{DISKON|rp}}', '{{/DISKON}}[B][H][LR]TOTAL||{{TOTAL|rp}}');
-    baris.push('[=]');
-    baris.push('[C]{{FOOTER}}');
-    if (opsi.qr) baris.push('[C][QR]');
-    baris.push('[FEED]');
-    baris.push('[CUT]');
+  // ---- Mode Mudah = "Struk Builder": susun baris seperti formulir ----
+  // Setiap baris adalah satu "blok" bertipe tertentu (teks, garis, logo, dst)
+  // dengan properti gaya sendiri (rata, tebal, ukuran). Blok bisa ditambah,
+  // dihapus, dan diurutkan ulang — hasilnya dirangkai jadi template direktif
+  // yang sama persis dipakai mesin cetak, sehingga satu mesin render untuk
+  // Mode Mudah maupun Mode Lanjutan.
+  const LABEL_BLOK = {
+    logo: 'Logo Toko', judul_toko: 'Nama Toko', alamat_toko: 'Alamat Toko', telepon_toko: 'No. Telepon Toko',
+    teks: 'Teks Bebas', garis: 'Garis Pembatas', spasi: 'Spasi Kosong',
+    info_transaksi: 'Info Transaksi', daftar_item: 'Daftar Barang', ringkasan_total: 'Subtotal & Total',
+    footer: 'Footer', qr: 'QR Code'
+  };
+  function blokBaru(type) {
+    const b = { type: type };
+    if (type === 'judul_toko') { b.align = 'C'; b.bold = true; b.size = 'sangat_besar'; }
+    if (type === 'teks') { b.align = 'C'; b.bold = false; b.size = 'normal'; b.text = 'Tulis teks di sini'; }
+    if (type === 'footer') { b.align = 'C'; }
+    if (type === 'garis') { b.jenis = 'putus'; }
+    if (type === 'info_transaksi') { b.noStruk = true; b.tanggal = true; b.kasir = true; b.metode = true; }
+    return b;
+  }
+  function blokDefault() {
+    return [
+      blokBaru('logo'),
+      blokBaru('judul_toko'),
+      { type: 'alamat_toko' },
+      { type: 'telepon_toko' },
+      { type: 'garis', jenis: 'tebal' },
+      blokBaru('info_transaksi'),
+      { type: 'garis', jenis: 'putus' },
+      { type: 'daftar_item' },
+      { type: 'garis', jenis: 'putus' },
+      { type: 'ringkasan_total' },
+      { type: 'garis', jenis: 'tebal' },
+      blokBaru('footer'),
+      { type: 'qr' }
+    ];
+  }
+  function tagGaya_(b) {
+    let t = (b.align === 'C' ? '[C]' : b.align === 'R' ? '[R]' : b.align === 'L' ? '[L]' : '');
+    if (b.bold) t += '[B]';
+    if (b.size === 'besar') t += '[H]'; else if (b.size === 'sangat_besar') t += '[2]';
+    return t;
+  }
+  function blokKeBaris_(b) {
+    switch (b.type) {
+      case 'logo': return ['[LOGO]'];
+      case 'judul_toko': return [tagGaya_(b) + '{{TOKO_NAMA}}'];
+      case 'alamat_toko': return ['{{?TOKO_ALAMAT}}[C]{{TOKO_ALAMAT}}', '{{/TOKO_ALAMAT}}'];
+      case 'telepon_toko': return ['{{?TOKO_WA}}[C]{{TOKO_WA}}', '{{/TOKO_WA}}'];
+      case 'teks': return b.text ? [tagGaya_(b) + b.text] : [];
+      case 'garis': return [b.jenis === 'tebal' ? '[=]' : '[-]'];
+      case 'spasi': return ['[FEED]'];
+      case 'info_transaksi': {
+        const baris = [];
+        if (b.noStruk) baris.push('No. Struk : {{NOTA}}');
+        if (b.tanggal) baris.push('Tanggal   : {{TANGGAL|tgl}} {{JAM}}');
+        if (b.kasir) baris.push('Kasir     : {{KASIR}}');
+        if (b.metode) baris.push('Bayar     : {{METODE}}');
+        return baris;
+      }
+      case 'daftar_item': return ['{{#ITEM}}', '{{NAMA}}', '[LR]{{QTY}} x {{HARGA|rp}}||{{SUB|rp}}', '{{/ITEM}}'];
+      case 'ringkasan_total': return ['[LR]Subtotal||{{SUBTOTAL|rp}}', '{{?DISKON}}[LR]Diskon||-{{DISKON|rp}}', '{{/DISKON}}[B][H][LR]TOTAL||{{TOTAL|rp}}'];
+      case 'footer': return [(b.align === 'L' ? '[L]' : b.align === 'R' ? '[R]' : '[C]') + '{{FOOTER}}'];
+      case 'qr': return ['[C][QR]'];
+      default: return [];
+    }
+  }
+  function blocksToTemplate(blocks) {
+    let baris = [];
+    (blocks || []).forEach(function (b) { baris = baris.concat(blokKeBaris_(b)); });
+    baris.push('[FEED]', '[CUT]');
     return baris.join('\n');
   }
-  // Tebak toggle dari teks template yang ada sekarang — dipakai untuk mengisi
-  // Mode Mudah saat pertama dibuka, dan untuk mendeteksi apakah template saat
-  // ini "cocok" dibuat dari toggle (bukan hasil edit manual yang lebih rumit).
-  function opsiDariTemplate(tpl) {
-    tpl = tpl || '';
-    return {
-      logo: tpl.indexOf('[LOGO]') > -1,
-      alamat: tpl.indexOf('TOKO_ALAMAT') > -1,
-      telepon: tpl.indexOf('TOKO_WA') > -1,
-      metode: tpl.indexOf('{{METODE}}') > -1,
-      qr: tpl.indexOf('[QR]') > -1
-    };
-  }
-  function cocokDenganOpsi(tpl) {
-    const opsi = opsiDariTemplate(tpl);
-    return (tpl || '').trim() === templateDariOpsi(opsi).trim();
-  }
 
-  const TEMPLATE_DEFAULT = templateDariOpsi({ logo: true, alamat: true, telepon: true, metode: true, qr: true });
+  const TEMPLATE_DEFAULT = blocksToTemplate(blokDefault());
 
   const PANDUAN_TEMPLATE = [
     { kode: '[C] [L] [R]', ket: 'Rata tengah / kiri / kanan untuk baris itu' },
@@ -467,7 +497,7 @@ const Printer = (function () {
   return {
     isSupported, connect, isConnected, cetakStruk, printFallback,
     renderPreviewHtml, contohTrx,
-    templateDariOpsi, opsiDariTemplate, cocokDenganOpsi,
+    blocksToTemplate, blokBaru, blokDefault, labelBlok: LABEL_BLOK,
     templateDefault: TEMPLATE_DEFAULT,
     panduanTemplate: PANDUAN_TEMPLATE
   };
