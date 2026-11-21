@@ -130,111 +130,296 @@ const Printer = (function () {
   function rupiah(n) {
     return 'Rp' + Number(n || 0).toLocaleString('id-ID');
   }
+  function cmdReverse(on) { return [GS, 0x42, on ? 1 : 0]; } // GS B n — mode cetak terbalik (putih di atas hitam), dipakai untuk [BOX]
 
-  // width58 = 32 kolom, width80 = 48 kolom (perkiraan font default)
-  // widthPx58 = 384 dot, widthPx80 = 576 dot (umum untuk resolusi 203dpi)
-  async function buildReceipt(trx, toko, kertas) {
-    const W = kertas === '80' ? 48 : 32;
-    const widthPx = kertas === '80' ? 576 : 384;
-    const cetakLogo = localStorage.getItem('kasirku_cetak_logo') !== '0';
-    const cetakQr = localStorage.getItem('kasirku_cetak_qr') !== '0';
+  // ============================================================
+  // MESIN TEMPLATE STRUK — bahasa direktif teks, bisa diubah Owner
+  // sendiri tanpa menyentuh kode. Lihat Printer.templateDefault &
+  // Printer.panduanTemplate untuk daftar lengkap direktif/variabel.
+  // ============================================================
+  const TEMPLATE_DEFAULT = [
+    '[LOGO]',
+    '[C][B][2]{{TOKO_NAMA}}',
+    '{{?TOKO_ALAMAT}}[C]{{TOKO_ALAMAT}}',
+    '{{/TOKO_ALAMAT}}{{?TOKO_WA}}[C]{{TOKO_WA}}',
+    '{{/TOKO_WA}}[=]',
+    'No. Struk : {{NOTA}}',
+    'Tanggal   : {{TANGGAL|tgl}} {{JAM}}',
+    'Kasir     : {{KASIR}}',
+    '[-]',
+    '{{#ITEM}}',
+    '{{NAMA}}',
+    '[LR]{{QTY}} x {{HARGA|rp}}||{{SUB|rp}}',
+    '{{/ITEM}}',
+    '[-]',
+    '[LR]Subtotal||{{SUBTOTAL|rp}}',
+    '{{?DISKON}}[LR]Diskon||-{{DISKON|rp}}',
+    '{{/DISKON}}[B][H][LR]TOTAL||{{TOTAL|rp}}',
+    '[=]',
+    '[C]{{FOOTER}}',
+    '[C][QR]',
+    '[FEED]',
+    '[CUT]'
+  ].join('\n');
 
+  const PANDUAN_TEMPLATE = [
+    { kode: '[C] [L] [R]', ket: 'Rata tengah / kiri / kanan untuk baris itu' },
+    { kode: '[B]', ket: 'Teks tebal' },
+    { kode: '[2]', ket: 'Ukuran 2x (lebar & tinggi)' },
+    { kode: '[H]', ket: 'Tinggi 2x saja' },
+    { kode: '[BOX]', ket: 'Teks disorot (putih di atas hitam)' },
+    { kode: '[LR]kiri||kanan', ket: 'Teks rata kiri & kanan dalam 1 baris, mis. [LR]Subtotal||{{SUBTOTAL|rp}}' },
+    { kode: '[-]  [=]', ket: 'Garis putus-putus / garis tebal selebar kertas' },
+    { kode: '[LOGO]', ket: 'Cetak logo toko (dari URL Logo di atas)' },
+    { kode: '[QR]isi', ket: 'Cetak QR code. Kosongkan isi untuk QR ringkasan transaksi otomatis' },
+    { kode: '[FEED]', ket: 'Beri jarak/baris kosong' },
+    { kode: '[CUT]', ket: 'Potong kertas otomatis — wajib ada di baris terakhir template' },
+    { kode: '{{TOKO_NAMA}} {{TOKO_ALAMAT}} {{TOKO_WA}}', ket: 'Data toko dari Pengaturan' },
+    { kode: '{{NOTA}} {{TANGGAL|tgl}} {{JAM}} {{KASIR}}', ket: 'Data transaksi' },
+    { kode: '{{#ITEM}} ... {{/ITEM}}', ket: 'Diulang untuk setiap barang. Di dalamnya pakai {{NAMA}} {{QTY}} {{HARGA|rp}} {{SUB|rp}}' },
+    { kode: '{{?KUNCI}} ... {{/KUNCI}}', ket: 'Baris di dalamnya hanya dicetak bila KUNCI berisi/tidak nol, mis. {{?DISKON}}...{{/DISKON}}' },
+    { kode: '{{SUBTOTAL|rp}} {{TOTAL|rp}} {{DISKON|rp}}', ket: 'Angka uang' },
+    { kode: '{{FOOTER}}', ket: 'Teks footer dari Pengaturan' },
+    { kode: '|rp |angka |kapital |kecil |tgl', ket: 'Filter format: Rupiah, angka ribuan, HURUF BESAR, huruf kecil, tanggal Indonesia' }
+  ];
+
+  function ctxDariTrx(trx, toko) {
+    const tgl = trx.Tanggal_Waktu ? new Date(trx.Tanggal_Waktu) : new Date();
+    return {
+      TOKO_NAMA: toko.Nama_Toko || 'KasirKu',
+      TOKO_ALAMAT: toko.Alamat || '',
+      TOKO_WA: toko.No_Telepon || '',
+      NOTA: trx.ID_Transaksi || '-',
+      TANGGAL: tgl.toISOString(),
+      JAM: tgl.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+      KASIR: trx.Kasir || '-',
+      ITEM: (trx.Items || []).map(function (it) {
+        return { NAMA: it.Nama_Produk, QTY: it.Qty, HARGA: it.Harga_Satuan, SUB: it.Qty * it.Harga_Satuan };
+      }),
+      SUBTOTAL: trx.Subtotal || 0,
+      DISKON: trx.Diskon || 0,
+      TOTAL: trx.Total_Bayar || 0,
+      FOOTER: toko.Footer_Struk || 'Terima kasih atas kunjungan Anda'
+    };
+  }
+
+  function formatTglIndo(v) {
+    const bln = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const d = v ? new Date(v) : new Date();
+    if (isNaN(d.getTime())) return String(v || '');
+    return d.getDate() + ' ' + bln[d.getMonth()] + ' ' + d.getFullYear();
+  }
+  function terapkanFilter_(nilai, mods) {
+    let v = nilai, stop = false;
+    for (let i = 0; i < mods.length && !stop; i++) {
+      const m = mods[i];
+      if (m === 'kosong0') { if (!v || Number(v) === 0) { v = ''; stop = true; } }
+      else if (m === 'rp') v = rupiah(v);
+      else if (m === 'angka') v = Number(v || 0).toLocaleString('id-ID');
+      else if (m === 'kapital') v = String(v == null ? '' : v).toUpperCase();
+      else if (m === 'kecil') v = String(v == null ? '' : v).toLowerCase();
+      else if (m === 'tgl') v = formatTglIndo(v);
+    }
+    return v == null ? '' : String(v);
+  }
+  // Render rekursif: loop {{#K}}..{{/K}} → kondisi {{?K}}..{{/K}} → variabel {{K|filter}}
+  function renderTeks_(tpl, ctx) {
+    tpl = tpl.replace(/\{\{#(\w+)\}\}\n?([\s\S]*?)\{\{\/\1\}\}\n?/g, function (_, key, inner) {
+      const arr = ctx[key];
+      if (!Array.isArray(arr)) return '';
+      return arr.map(function (item) { return renderTeks_(inner, Object.assign({}, ctx, item)); }).join('');
+    });
+    tpl = tpl.replace(/\{\{\?(\w+)\}\}\n?([\s\S]*?)\{\{\/\1\}\}\n?/g, function (_, key, inner) {
+      const v = ctx[key];
+      const truthy = v !== undefined && v !== null && v !== '' && v !== 0 && v !== '0' && v !== false;
+      return truthy ? renderTeks_(inner, ctx) : '';
+    });
+    tpl = tpl.replace(/\{\{([A-Za-z0-9_]+)((?:\|[a-z0-9_]+)*)\}\}/g, function (_, key, modsRaw) {
+      const mods = modsRaw ? modsRaw.split('|').slice(1) : [];
+      return terapkanFilter_(ctx[key], mods);
+    });
+    return tpl;
+  }
+  function bungkusTeks_(teks, W) {
+    teks = String(teks || '');
+    if (teks.length <= W) return [teks];
+    const kata = teks.split(' ');
+    const baris = []; let cur = '';
+    kata.forEach(function (k) {
+      if (k.length > W) { // kata tunggal lebih panjang dari kertas: potong paksa
+        if (cur) { baris.push(cur); cur = ''; }
+        for (let i = 0; i < k.length; i += W) baris.push(k.slice(i, i + W));
+        return;
+      }
+      const cand = cur ? cur + ' ' + k : k;
+      if (cand.length > W) { baris.push(cur); cur = k; } else { cur = cand; }
+    });
+    if (cur) baris.push(cur);
+    return baris;
+  }
+  function parseBaris_(line) {
+    let align = 'L', bold = false, big = false, tall = false, boxed = false, rest = line;
+    for (;;) {
+      const m = rest.match(/^\[([A-Z0-9=\-]+)\]/);
+      if (!m) break;
+      const tag = m[1];
+      rest = rest.slice(m[0].length);
+      if (tag === 'C') align = 'C';
+      else if (tag === 'L') align = 'L';
+      else if (tag === 'R') align = 'R';
+      else if (tag === 'B') bold = true;
+      else if (tag === '2') big = true;
+      else if (tag === 'H') tall = true;
+      else if (tag === 'BOX') boxed = true;
+      else if (tag === '-') return { type: 'rule', ch: '-' };
+      else if (tag === '=') return { type: 'rule', ch: '=' };
+      else if (tag === 'FEED') return { type: 'feed' };
+      else if (tag === 'CUT') return { type: 'cut' };
+      else if (tag === 'LOGO') return { type: 'logo' };
+      else if (tag === 'QR') return { type: 'qr', data: rest.trim() };
+      else if (tag === 'LR') {
+        const parts = rest.split('||');
+        return { type: 'lr', left: parts[0] || '', right: parts[1] || '', bold: bold, big: big, tall: tall };
+      }
+      // tag tak dikenal (mis. [BAR] belum didukung) — abaikan, lanjut cetak sisa teks apa adanya
+    }
+    if (line.trim() === '') return { type: 'blank' };
+    return { type: 'text', text: rest, align: align, bold: bold, big: big, tall: tall, boxed: boxed };
+  }
+  function parseTemplate_(tpl, ctx) {
+    const rendered = renderTeks_(tpl, ctx);
+    return rendered.split('\n').map(parseBaris_);
+  }
+
+  // ---- Baris hasil parse → byte ESC/POS ----
+  async function barisKeBytes_(baris, W, widthPx, toko, warnings) {
+    const alignCode = { L: 0, C: 1, R: 2 };
     let b = [];
-    b = b.concat(cmdInit());
-
-    // ---- Logo toko (opsional) ----
-    if (cetakLogo && toko.Logo_URL) {
-      try {
-        const raster = await imageToRaster(toko.Logo_URL, widthPx);
-        b = b.concat(cmdAlign(1), cmdRaster(raster), textToBytes('\n'));
-      } catch (e) {
-        console.warn('Lewati logo:', e.message);
+    for (const row of baris) {
+      if (row.type === 'blank') { b = b.concat(textToBytes('\n')); }
+      else if (row.type === 'rule') { b = b.concat(textToBytes(row.ch.repeat(W) + '\n')); }
+      else if (row.type === 'feed') { b = b.concat(cmdFeed(2)); }
+      else if (row.type === 'cut') { b = b.concat(cmdCut()); }
+      else if (row.type === 'logo') {
+        if (toko.Logo_URL) {
+          try {
+            const raster = await imageToRaster(toko.Logo_URL, widthPx);
+            b = b.concat(cmdAlign(1), cmdRaster(raster), textToBytes('\n'), cmdAlign(0));
+          } catch (e) {
+            warnings.push('Logo tidak tercetak: ' + e.message);
+          }
+        }
+      } else if (row.type === 'qr') {
+        const payload = row.data || ('KasirKu-Struk');
+        b = b.concat(cmdAlign(1), cmdQr(payload, W >= 48 ? 6 : 5), textToBytes('\n'), cmdAlign(0));
+      } else if (row.type === 'lr') {
+        const kanan = row.right;
+        const Wlr = row.big ? Math.max(1, Math.floor(W / 2)) : W;
+        const avail = Math.max(1, Wlr - kanan.length - 1);
+        if (row.bold) b = b.concat(cmdBold(true));
+        if (row.big || row.tall) b = b.concat(cmdSize(row.big ? 1 : 0, (row.big || row.tall) ? 1 : 0));
+        if (row.left.length <= avail) {
+          const spasi = Math.max(1, Wlr - row.left.length - kanan.length);
+          b = b.concat(textToBytes(row.left + ' '.repeat(spasi) + kanan + '\n'));
+        } else {
+          bungkusTeks_(row.left, Wlr).forEach(function (l) { b = b.concat(textToBytes(l + '\n')); });
+          const spasi = Math.max(1, Wlr - kanan.length);
+          b = b.concat(textToBytes(' '.repeat(spasi) + kanan + '\n'));
+        }
+        if (row.big || row.tall) b = b.concat(cmdSize(0, 0));
+        if (row.bold) b = b.concat(cmdBold(false));
+      } else if (row.type === 'text') {
+        b = b.concat(cmdAlign(alignCode[row.align] || 0));
+        if (row.bold) b = b.concat(cmdBold(true));
+        if (row.boxed) b = b.concat(cmdReverse(true));
+        if (row.big || row.tall) b = b.concat(cmdSize(row.big ? 1 : 0, (row.big || row.tall) ? 1 : 0));
+        const lebarEfektif = row.big ? Math.max(1, Math.floor(W / 2)) : W;
+        bungkusTeks_(row.text, lebarEfektif).forEach(function (l) { b = b.concat(textToBytes(l + '\n')); });
+        if (row.big || row.tall) b = b.concat(cmdSize(0, 0));
+        if (row.boxed) b = b.concat(cmdReverse(false));
+        if (row.bold) b = b.concat(cmdBold(false));
+        if (row.align !== 'L') b = b.concat(cmdAlign(0));
       }
     }
-
-    // ---- Kop toko ----
-    b = b.concat(cmdAlign(1), cmdBold(true), cmdSize(1, 1));
-    b = b.concat(textToBytes((toko.Nama_Toko || 'KasirKu') + '\n'));
-    b = b.concat(cmdSize(0, 0), cmdBold(false));
-    if (toko.Alamat) b = b.concat(textToBytes(toko.Alamat + '\n'));
-    if (toko.No_Telepon) b = b.concat(textToBytes(toko.No_Telepon + '\n'));
-    b = b.concat(cmdAlign(0));
-    b = b.concat(line(W));
-
-    // ---- Info transaksi ----
-    b = b.concat(textToBytes('No. Struk : ' + trx.ID_Transaksi + '\n'));
-    b = b.concat(textToBytes('Tanggal   : ' + new Date(trx.Tanggal_Waktu).toLocaleString('id-ID') + '\n'));
-    b = b.concat(textToBytes('Kasir     : ' + (trx.Kasir || '-') + '\n'));
-    b = b.concat(thinLine(W));
-
-    // ---- Daftar item ----
-    trx.Items.forEach(function (it) {
-      const nama = String(it.Nama_Produk);
-      b = b.concat(textToBytes(nama.length > W ? nama.slice(0, W) + '\n' : nama + '\n'));
-      const kiri = it.Qty + ' x ' + rupiah(it.Harga_Satuan);
-      const kanan = rupiah(it.Qty * it.Harga_Satuan);
-      const spasi = Math.max(1, W - kiri.length - kanan.length);
-      b = b.concat(textToBytes(kiri + ' '.repeat(spasi) + kanan + '\n'));
-    });
-
-    b = b.concat(thinLine(W));
-    const row = function (label, val) {
-      const spasi = Math.max(1, W - label.length - val.length);
-      return textToBytes(label + ' '.repeat(spasi) + val + '\n');
-    };
-    b = b.concat(row('Subtotal', rupiah(trx.Subtotal)));
-    if (trx.Diskon) b = b.concat(row('Diskon', '-' + rupiah(trx.Diskon)));
-    b = b.concat(cmdBold(true), cmdSize(0, 1));
-    b = b.concat(row('TOTAL', rupiah(trx.Total_Bayar)));
-    b = b.concat(cmdSize(0, 0), cmdBold(false));
-    b = b.concat(line(W));
-
-    // ---- Footer & QR verifikasi (opsional) ----
-    b = b.concat(cmdAlign(1));
-    b = b.concat(textToBytes((toko.Footer_Struk || 'Terima kasih') + '\n'));
-    if (cetakQr) {
-      const payload = 'KasirKu|' + trx.ID_Transaksi + '|' + rupiah(trx.Total_Bayar) + '|' + new Date(trx.Tanggal_Waktu).toLocaleString('id-ID');
-      b = b.concat(textToBytes('\n'), cmdQr(payload, kertas === '80' ? 6 : 5), textToBytes('\n'));
-    }
-    b = b.concat(cmdFeed(3));
-    b = b.concat(cmdCut());
     return b;
   }
 
+  async function buildReceipt(trx, toko, kertas) {
+    const W = kertas === '80' ? 48 : 32;
+    const widthPx = kertas === '80' ? 576 : 384;
+    const tpl = toko.Template_Struk || TEMPLATE_DEFAULT;
+    const ctx = ctxDariTrx(trx, toko);
+    const baris = parseTemplate_(tpl, ctx);
+    const warnings = [];
+    let b = cmdInit();
+    b = b.concat(await barisKeBytes_(baris, W, widthPx, toko, warnings));
+    // Jaga-jaga: bila template kustom lupa [CUT], tetap beri jarak secukupnya.
+    if (baris.every(function (r) { return r.type !== 'cut'; })) b = b.concat(cmdFeed(3), cmdCut());
+    return { bytes: b, warnings: warnings };
+  }
+
   async function printThermal(trx, toko, kertas) {
-    const bytes = await buildReceipt(trx, toko, kertas || localStorage.getItem('kasirku_kertas') || '58');
-    await writeBytes(bytes);
+    const hasil = await buildReceipt(trx, toko, kertas || localStorage.getItem('kasirku_kertas') || '58');
+    await writeBytes(hasil.bytes);
+    return hasil.warnings;
+  }
+
+  // ---- Pratinjau HTML (dipakai di halaman Pengaturan & dialog print fallback) ----
+  function barisKeHtml_(baris, toko) {
+    const alignCss = { L: 'left', C: 'center', R: 'right' };
+    const esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+    let html = '';
+    baris.forEach(function (row) {
+      if (row.type === 'blank') html += '<div>&nbsp;</div>';
+      else if (row.type === 'rule') html += '<div style="border-top:1px ' + (row.ch === '=' ? 'solid' : 'dashed') + ' #000;margin:3px 0"></div>';
+      else if (row.type === 'feed') html += '<div style="height:10px"></div>';
+      else if (row.type === 'cut') html += '<div style="border-top:2px dashed #999;margin:6px 0;font-size:0.7em;color:#999;text-align:center">✂ potong di sini</div>';
+      else if (row.type === 'logo') {
+        html += toko.Logo_URL
+          ? '<div style="text-align:center;margin:4px 0"><img src="' + esc(toko.Logo_URL) + '" style="max-width:70%;max-height:90px" onerror="this.outerHTML=\'<div style=&quot;color:#c00;font-size:0.8em&quot;>⚠️ Logo gagal dimuat dari URL ini</div>\'"></div>'
+          : '<div style="color:#999;font-size:0.8em;text-align:center">(logo belum diisi)</div>';
+      } else if (row.type === 'qr') {
+        html += '<div style="text-align:center;margin:6px 0;font-size:0.72em;color:#666">[QR: ' + esc(row.data || 'ringkasan transaksi') + ']</div>';
+      } else if (row.type === 'lr') {
+        const styleLr = (row.bold ? 'font-weight:bold;' : '') + ((row.big || row.tall) ? 'font-size:1.3em;' : '');
+        html += '<div style="display:flex;justify-content:space-between;gap:8px;' + styleLr + '"><span>' + esc(row.left) + '</span><span>' + esc(row.right) + '</span></div>';
+      } else if (row.type === 'text') {
+        const style = 'text-align:' + alignCss[row.align] + ';' +
+          (row.bold ? 'font-weight:bold;' : '') +
+          (row.boxed ? 'background:#000;color:#fff;display:inline-block;padding:0 4px;' : '') +
+          (row.big ? 'font-size:1.6em;' : row.tall ? 'transform:scaleY(1.6);transform-origin:left;' : '');
+        html += '<div style="' + style + '">' + esc(row.text) + '</div>';
+      }
+    });
+    return html;
+  }
+  function renderPreviewHtml(templateStr, trx, toko, kertas) {
+    const W = kertas === '80' ? 48 : 32;
+    const tpl = templateStr || TEMPLATE_DEFAULT;
+    const ctx = ctxDariTrx(trx, toko);
+    const baris = parseTemplate_(tpl, ctx);
+    return barisKeHtml_(baris, toko);
+  }
+  function contohTrx() {
+    return {
+      ID_Transaksi: 'TRX-CONTOH', Tanggal_Waktu: new Date().toISOString(), Kasir: 'Owner',
+      Items: [
+        { Nama_Produk: 'Nasi Lalap', Qty: 2, Harga_Satuan: 10000 },
+        { Nama_Produk: 'Es Teh Manis', Qty: 1, Harga_Satuan: 5000 }
+      ],
+      Subtotal: 25000, Diskon: 0, Total_Bayar: 25000
+    };
   }
 
   // ---- Fallback: cetak via dialog print browser (printer apa saja) ----
   function printFallback(trx, toko) {
     const win = window.open('', '_blank', 'width=320,height=600');
-    const itemsHtml = trx.Items.map(function (it) {
-      return '<tr><td colspan="2">' + it.Nama_Produk + '</td></tr>' +
-        '<tr><td>' + it.Qty + ' x Rp' + Number(it.Harga_Satuan).toLocaleString('id-ID') + '</td>' +
-        '<td style="text-align:right">Rp' + Number(it.Qty * it.Harga_Satuan).toLocaleString('id-ID') + '</td></tr>';
-    }).join('');
+    const tpl = toko.Template_Struk || TEMPLATE_DEFAULT;
+    const isi = renderPreviewHtml(tpl, trx, toko, localStorage.getItem('kasirku_kertas') || '58');
     win.document.write(
       '<html><head><title>Struk</title><style>' +
       'body{font-family:monospace;font-size:12px;width:280px;margin:0 auto}' +
-      'table{width:100%;border-collapse:collapse}' +
-      'hr{border:none;border-top:1px dashed #000}' +
-      '.center{text-align:center}.bold{font-weight:bold}' +
-      '</style></head><body>' +
-      '<div class="center bold">' + (toko.Nama_Toko || 'KasirKu') + '</div>' +
-      '<div class="center">' + (toko.Alamat || '') + '</div>' +
-      '<div class="center">' + (toko.No_Telepon || '') + '</div><hr>' +
-      '<div>No: ' + trx.ID_Transaksi + '</div>' +
-      '<div>' + new Date(trx.Tanggal_Waktu).toLocaleString('id-ID') + '</div>' +
-      '<div>Kasir: ' + (trx.Kasir || '-') + '</div><hr>' +
-      '<table>' + itemsHtml + '</table><hr>' +
-      '<table>' +
-      '<tr><td>Subtotal</td><td style="text-align:right">Rp' + Number(trx.Subtotal).toLocaleString('id-ID') + '</td></tr>' +
-      (trx.Diskon ? '<tr><td>Diskon</td><td style="text-align:right">-Rp' + Number(trx.Diskon).toLocaleString('id-ID') + '</td></tr>' : '') +
-      '<tr class="bold"><td>TOTAL</td><td style="text-align:right">Rp' + Number(trx.Total_Bayar).toLocaleString('id-ID') + '</td></tr>' +
-      '</table><hr>' +
-      '<div class="center">' + (toko.Footer_Struk || 'Terima kasih') + '</div>' +
-      '</body></html>'
+      '</style></head><body>' + isi + '</body></html>'
     );
     win.document.close();
     win.focus();
@@ -244,8 +429,8 @@ const Printer = (function () {
   async function cetakStruk(trx, toko) {
     if (isSupported()) {
       try {
-        await printThermal(trx, toko);
-        return { via: 'bluetooth' };
+        const warnings = await printThermal(trx, toko);
+        return { via: 'bluetooth', warnings: warnings };
       } catch (e) {
         console.warn('Cetak Bluetooth gagal, fallback ke dialog print:', e);
         printFallback(trx, toko);
@@ -256,5 +441,10 @@ const Printer = (function () {
     return { via: 'fallback' };
   }
 
-  return { isSupported, connect, isConnected, cetakStruk, printFallback };
+  return {
+    isSupported, connect, isConnected, cetakStruk, printFallback,
+    renderPreviewHtml, contohTrx,
+    templateDefault: TEMPLATE_DEFAULT,
+    panduanTemplate: PANDUAN_TEMPLATE
+  };
 })();
