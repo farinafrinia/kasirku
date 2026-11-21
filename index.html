@@ -38,6 +38,7 @@
       <a href="#" class="nav-link" data-section="riwayat" onclick="navigateTo('riwayat')">🕘 Riwayat Transaksi</a>
       <a href="#" class="nav-link" data-section="dashboard" onclick="navigateTo('dashboard')" data-owner-only>📊 Dashboard</a>
       <a href="#" class="nav-link" data-section="pengaturan" onclick="navigateTo('pengaturan')" data-owner-only>⚙️ Pengaturan</a>
+      <a href="#" class="nav-link" data-section="akun" onclick="navigateTo('akun')">👤 Akun Saya</a>
     </nav>
     <button class="btn-logout" onclick="doLogout()">Keluar</button>
   </aside>
@@ -129,6 +130,10 @@
           <div style="align-self:end">
             <button type="button" class="btn-secondary" onclick="hubungkanPrinter()">🔵 Hubungkan Printer Bluetooth</button>
           </div>
+          <div class="span-2" style="display:flex;gap:18px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="stCetakLogo" style="width:auto"> Cetak logo toko di struk</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="stCetakQr" style="width:auto"> Cetak QR code verifikasi di struk</label>
+          </div>
           <div class="span-2"><button type="submit" class="btn-primary">Simpan Pengaturan</button></div>
         </form>
 
@@ -148,6 +153,20 @@
           </div>
           <div id="importReport" style="margin-top:10px;font-size:0.85rem"></div>
         </div>
+      </section>
+
+      <!-- ---------------- AKUN SAYA ---------------- -->
+      <section id="section-akun" class="content-section">
+        <h3>Akun Saya</h3>
+        <form id="akunForm" class="card form-grid" style="max-width:480px">
+          <div class="span-2"><label>Password Saat Ini</label><input type="password" id="akCurPass" required autocomplete="current-password"></div>
+          <div><label>Username Baru (opsional)</label><input type="text" id="akNewUser" autocomplete="off" placeholder="Kosongkan bila tidak diubah"></div>
+          <div><label>Password Baru (opsional)</label><input type="password" id="akNewPass" autocomplete="new-password" placeholder="Min. 6 karakter"></div>
+          <div class="span-2"><button type="submit" class="btn-primary">Simpan Perubahan</button></div>
+          <p class="span-2" style="font-size:0.82rem;color:var(--text-muted);margin:0">
+            Setelah disimpan, Anda akan otomatis keluar dan perlu login ulang dengan data baru.
+          </p>
+        </form>
       </section>
 
     </main>
