@@ -67,6 +67,13 @@
             <div id="cartItems" class="cart-items"></div>
             <div class="cart-footer">
               <div class="cart-total-row"><span>Total</span><span id="cartTotal">Rp0</span></div>
+              <div style="margin-bottom:10px">
+                <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">Metode Bayar</label>
+                <select id="posMetode" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px">
+                  <option value="Tunai">💵 Tunai</option>
+                  <option value="Non Tunai">💳 Non Tunai (QRIS/Debit/Transfer)</option>
+                </select>
+              </div>
               <button id="btnBayar" class="btn-primary btn-block" onclick="handleCheckout()" disabled>Bayar &amp; Cetak Struk</button>
             </div>
           </div>
@@ -95,7 +102,7 @@
         </div>
         <div class="table-wrap">
           <table class="data-table">
-            <thead><tr><th>ID Transaksi</th><th>Tanggal</th><th>Kasir</th><th>Total</th><th>Status</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>ID Transaksi</th><th>Tanggal</th><th>Kasir</th><th>Bayar</th><th>Total</th><th>Status</th><th>Aksi</th></tr></thead>
             <tbody id="riwayatTableBody"></tbody>
           </table>
         </div>
@@ -122,7 +129,18 @@
           <div><label>Nama Toko</label><input type="text" id="stNamaToko" required></div>
           <div><label>No. Telepon</label><input type="text" id="stTelepon"></div>
           <div class="span-2"><label>Alamat</label><input type="text" id="stAlamat"></div>
-          <div class="span-2"><label>URL Logo</label><input type="text" id="stLogoUrl" placeholder="https://..."></div>
+          <div class="span-2">
+            <label>Logo Toko</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input type="file" id="stLogoFile" accept="image/*" style="flex:1;min-width:180px">
+              <button type="button" class="btn-sm btn-sm-outline" onclick="hapusLogo()">✕ Hapus Logo</button>
+            </div>
+            <div id="stLogoStatus" style="font-size:0.78rem;color:var(--text-muted);margin-top:4px"></div>
+            <input type="text" id="stLogoUrl" placeholder="atau tempel URL gambar di sini (opsional)" style="margin-top:6px">
+            <p style="font-size:0.76rem;color:var(--text-muted);margin:4px 0 0">
+              Upload langsung dari HP/laptop lebih aman dari gagal cetak (tidak kena masalah CORS). Gambar otomatis diperkecil & diproses jadi hitam-putih.
+            </p>
+          </div>
           <div class="span-2"><label>Footer Struk</label><input type="text" id="stFooter"></div>
           <div><label>Ukuran Kertas Printer</label>
             <select id="stKertas"><option value="58">58 mm</option><option value="80">80 mm</option></select>
@@ -131,17 +149,37 @@
             <button type="button" class="btn-secondary" onclick="hubungkanPrinter()">🔵 Hubungkan Printer Bluetooth</button>
           </div>
           <div class="span-2">
-            <label>Template Struk <span style="font-weight:400;color:var(--text-muted)">(atur sendiri tampilan hasil print)</span></label>
-            <textarea id="stTemplate" rows="16" spellcheck="false"
-              style="width:100%;font-family:'Courier New',monospace;font-size:0.82rem;padding:10px;border:1px solid var(--border);border-radius:8px;white-space:pre"></textarea>
-            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-              <button type="button" class="btn-secondary" onclick="pratinjauStruk()">👁️ Pratinjau</button>
-              <button type="button" class="btn-secondary" onclick="resetTemplateStruk()">↺ Kembalikan ke Bawaan</button>
+            <label>Tampilan Struk</label>
+            <div style="display:flex;gap:8px;margin-bottom:10px">
+              <button type="button" id="btnModeMudah" class="btn-secondary" onclick="pilihModeTemplate('mudah')">🔘 Mode Mudah</button>
+              <button type="button" id="btnModeLanjutan" class="btn-secondary" onclick="pilihModeTemplate('lanjutan')">💻 Mode Lanjutan (kode)</button>
             </div>
-            <details style="margin-top:10px">
-              <summary style="cursor:pointer;font-size:0.85rem;color:var(--text-muted)">📖 Panduan kode template</summary>
-              <div id="panduanTemplate" style="font-size:0.78rem;margin-top:8px;line-height:1.6"></div>
-            </details>
+
+            <!-- MODE MUDAH: tinggal centang, tanpa perlu paham kode -->
+            <div id="templateModeMudah" style="display:none;padding:14px;background:#f8fafc;border:1px solid var(--border);border-radius:8px">
+              <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px">Centang bagian yang ingin ditampilkan di struk:</p>
+              <div style="display:flex;gap:16px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="opLogo" style="width:auto"> Logo toko</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="opAlamat" style="width:auto"> Alamat toko</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="opTelepon" style="width:auto"> No. Telepon</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="opMetode" style="width:auto"> Metode bayar</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="opQr" style="width:auto"> QR code</label>
+              </div>
+            </div>
+
+            <!-- MODE LANJUTAN: edit kode template langsung, bebas bentuk apapun -->
+            <div id="templateModeLanjutan" style="display:none">
+              <textarea id="stTemplate" rows="16" spellcheck="false"
+                style="width:100%;font-family:'Courier New',monospace;font-size:0.82rem;padding:10px;border:1px solid var(--border);border-radius:8px;white-space:pre"></textarea>
+              <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+                <button type="button" class="btn-secondary" onclick="pratinjauStruk()">👁️ Pratinjau</button>
+                <button type="button" class="btn-secondary" onclick="resetTemplateStruk()">↺ Kembalikan ke Bawaan</button>
+              </div>
+              <details style="margin-top:10px">
+                <summary style="cursor:pointer;font-size:0.85rem;color:var(--text-muted)">📖 Panduan kode template</summary>
+                <div id="panduanTemplate" style="font-size:0.78rem;margin-top:8px;line-height:1.6"></div>
+              </details>
+            </div>
           </div>
           <div class="span-2"><button type="submit" class="btn-primary">Simpan Pengaturan</button></div>
         </form>
@@ -180,8 +218,12 @@
         <h3>Akun Saya</h3>
         <form id="akunForm" class="card form-grid" style="max-width:480px">
           <div class="span-2"><label>Password Saat Ini</label><input type="password" id="akCurPass" required autocomplete="current-password"></div>
+          <div><label>Nama Tampilan (opsional)</label><input type="text" id="akNewNama" autocomplete="off" placeholder="Nama yang tercetak di struk, mis. Budi"></div>
           <div><label>Username Baru (opsional)</label><input type="text" id="akNewUser" autocomplete="off" placeholder="Kosongkan bila tidak diubah"></div>
           <div><label>Password Baru (opsional)</label><input type="password" id="akNewPass" autocomplete="new-password" placeholder="Min. 6 karakter"></div>
+          <p class="span-2" style="font-size:0.78rem;color:var(--text-muted);margin:-6px 0 0">
+            "Nama Tampilan" berbeda dari username — ini yang muncul di kolom "Kasir" pada struk dan sapaan di aplikasi.
+          </p>
           <div class="span-2"><button type="submit" class="btn-primary">Simpan Perubahan</button></div>
           <p class="span-2" style="font-size:0.82rem;color:var(--text-muted);margin:0">
             Setelah disimpan, Anda akan otomatis keluar dan perlu login ulang dengan data baru.
