@@ -443,8 +443,9 @@ function renderPengaturanForm() {
   el('stLogoUrl').value = p.Logo_URL || '';
   el('stFooter').value = p.Footer_Struk || '';
   el('stKertas').value = localStorage.getItem('kasirku_kertas') || '58';
-  el('stCetakLogo').checked = localStorage.getItem('kasirku_cetak_logo') !== '0';
-  el('stCetakQr').checked = localStorage.getItem('kasirku_cetak_qr') !== '0';
+  el('stTemplate').value = p.Template_Struk || Printer.templateDefault;
+  renderPanduanTemplate();
+  pratinjauStruk();
 }
 async function submitPengaturanForm(e) {
   e.preventDefault();
@@ -453,17 +454,53 @@ async function submitPengaturanForm(e) {
     Alamat: el('stAlamat').value.trim(),
     No_Telepon: el('stTelepon').value.trim(),
     Logo_URL: el('stLogoUrl').value.trim(),
-    Footer_Struk: el('stFooter').value.trim()
+    Footer_Struk: el('stFooter').value.trim(),
+    Template_Struk: el('stTemplate').value
   };
   localStorage.setItem('kasirku_kertas', el('stKertas').value);
-  localStorage.setItem('kasirku_cetak_logo', el('stCetakLogo').checked ? '1' : '0');
-  localStorage.setItem('kasirku_cetak_qr', el('stCetakQr').checked ? '1' : '0');
   try {
     await api('pengaturan.save', { pengaturan: pengaturan });
     appState.pengaturan = pengaturan;
     applyBranding();
     showToast('Pengaturan toko disimpan', 'success');
   } catch (e) { /* toast sudah tampil */ }
+}
+
+// ---- Editor & pratinjau template struk (gas-struk-resi-printer) ----
+function renderPanduanTemplate() {
+  const box = el('panduanTemplate');
+  if (!box || box.dataset.rendered) return;
+  box.dataset.rendered = '1';
+  box.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+    Printer.panduanTemplate.map(function (p) {
+      return '<tr><td style="padding:3px 8px 3px 0;white-space:nowrap;font-family:monospace;color:#2563eb;vertical-align:top">' + p.kode + '</td>' +
+        '<td style="padding:3px 0;color:var(--text-muted)">' + p.ket + '</td></tr>';
+    }).join('') + '</table>';
+}
+function pengaturanDariForm_() {
+  return {
+    Nama_Toko: el('stNamaToko').value.trim() || 'KasirKu',
+    Alamat: el('stAlamat').value.trim(),
+    No_Telepon: el('stTelepon').value.trim(),
+    Logo_URL: el('stLogoUrl').value.trim(),
+    Footer_Struk: el('stFooter').value.trim() || 'Terima kasih atas kunjungan Anda'
+  };
+}
+function pratinjauStruk() {
+  try {
+    const toko = pengaturanDariForm_();
+    const tpl = el('stTemplate').value;
+    const kertas = el('stKertas').value;
+    el('strukPreview').innerHTML = Printer.renderPreviewHtml(tpl, Printer.contohTrx(), toko, kertas);
+    el('strukPreviewWrap').style.display = 'flex';
+  } catch (e) {
+    showToast('Template tidak valid: ' + e.message, 'danger');
+  }
+}
+function resetTemplateStruk() {
+  el('stTemplate').value = Printer.templateDefault;
+  pratinjauStruk();
+  showToast('Template dikembalikan ke bawaan — klik Simpan Pengaturan untuk menyimpan', 'warning');
 }
 
 // ---- Import Produk dari CSV (gas-migrasi-database: upsert idempoten) ----
@@ -525,6 +562,14 @@ document.addEventListener('DOMContentLoaded', function () {
   el('produkForm').addEventListener('submit', submitProdukForm);
   el('pengaturanForm').addEventListener('submit', submitPengaturanForm);
   el('akunForm').addEventListener('submit', submitAkunForm);
+
+  // Pratinjau struk live (debounced) saat template/field toko diubah
+  let _previewTimer = null;
+  function jadwalkanPratinjau() { clearTimeout(_previewTimer); _previewTimer = setTimeout(pratinjauStruk, 350); }
+  ['stTemplate', 'stNamaToko', 'stAlamat', 'stTelepon', 'stLogoUrl', 'stFooter', 'stKertas'].forEach(function (id) {
+    const node = el(id);
+    if (node) node.addEventListener('input', jadwalkanPratinjau);
+  });
 });
 
 async function submitAkunForm(e) {
