@@ -54,6 +54,7 @@ input, select { font-family: inherit; }
   padding: 10px 16px; border-radius: 8px; font-weight: 600;
 }
 .btn-block { width: 100%; }
+.btn-secondary.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-sm { background: var(--accent); color: #fff; border: none; padding: 5px 10px; border-radius: 6px; font-size: 0.8rem; }
 .btn-sm-outline { background: #fff; color: var(--text); border: 1px solid var(--border); }
 .btn-icon { background: none; border: none; color: var(--red); font-size: 1.1rem; }
