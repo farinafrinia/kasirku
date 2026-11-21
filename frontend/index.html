@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>KasirKu</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#2563eb">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+
+<!-- ======================= LOGIN ======================= -->
+<div id="authView" class="auth-view">
+  <form id="loginForm" class="auth-card">
+    <h1 class="auth-title">KasirKu</h1>
+    <p class="auth-subtitle">Masuk untuk mulai bertransaksi</p>
+    <label>Username</label>
+    <input type="text" id="loginUsername" placeholder="owner / kasir" required autocomplete="username">
+    <label>Password</label>
+    <input type="password" id="loginPassword" placeholder="Password" required autocomplete="current-password">
+    <button type="submit" id="btnLogin" class="btn-primary btn-block">Masuk</button>
+  </form>
+</div>
+
+<!-- ======================= APP SHELL ======================= -->
+<div id="appShell" class="app-shell">
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-brand">
+      <img id="brandLogo" src="" alt="" style="display:none">
+      <span id="brandNama">KasirKu</span>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-link" data-section="kasir" onclick="navigateTo('kasir')">🧾 Kasir</a>
+      <a href="#" class="nav-link" data-section="produk" onclick="navigateTo('produk')">📦 Produk</a>
+      <a href="#" class="nav-link" data-section="riwayat" onclick="navigateTo('riwayat')">🕘 Riwayat Transaksi</a>
+      <a href="#" class="nav-link" data-section="dashboard" onclick="navigateTo('dashboard')" data-owner-only>📊 Dashboard</a>
+      <a href="#" class="nav-link" data-section="pengaturan" onclick="navigateTo('pengaturan')" data-owner-only>⚙️ Pengaturan</a>
+    </nav>
+    <button class="btn-logout" onclick="doLogout()">Keluar</button>
+  </aside>
+
+  <div class="main-area">
+    <header class="topbar">
+      <button class="btn-icon-lg" onclick="toggleSidebar()">☰</button>
+      <h2 id="pageTitle">Kasir</h2>
+      <span id="userNama" class="user-badge"></span>
+    </header>
+
+    <main class="main-content">
+
+      <!-- ---------------- KASIR / POS ---------------- -->
+      <section id="section-kasir" class="content-section active">
+        <div class="pos-layout">
+          <div class="pos-products">
+            <div class="pos-toolbar">
+              <input type="text" placeholder="Cari produk..." oninput="handleSearchProduk(this.value)">
+              <select id="filterKategori" onchange="handleSearchProduk(document.querySelector('.pos-toolbar input').value)"></select>
+            </div>
+            <div id="produkGrid" class="produk-grid"></div>
+          </div>
+          <div class="pos-cart">
+            <h3>Keranjang</h3>
+            <div id="cartItems" class="cart-items"></div>
+            <div class="cart-footer">
+              <div class="cart-total-row"><span>Total</span><span id="cartTotal">Rp0</span></div>
+              <button id="btnBayar" class="btn-primary btn-block" onclick="handleCheckout()" disabled>Bayar &amp; Cetak Struk</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------- PRODUK ---------------- -->
+      <section id="section-produk" class="content-section">
+        <div class="section-header">
+          <h3>Kelola Produk</h3>
+          <button class="btn-primary" onclick="openProdukModal()" data-owner-only>+ Tambah Produk</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Nama</th><th>Kategori</th><th>Harga Jual</th><th>Stok</th><th>Status</th><th>Aksi</th></tr></thead>
+            <tbody id="produkTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---------------- RIWAYAT TRANSAKSI ---------------- -->
+      <section id="section-riwayat" class="content-section">
+        <div class="section-header">
+          <h3>Riwayat Transaksi</h3>
+          <input type="date" onchange="searchRiwayat(this.value)">
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>ID Transaksi</th><th>Tanggal</th><th>Kasir</th><th>Total</th><th>Status</th><th>Aksi</th></tr></thead>
+            <tbody id="riwayatTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---------------- DASHBOARD ---------------- -->
+      <section id="section-dashboard" class="content-section">
+        <h3>Ringkasan</h3>
+        <div class="kpi-row">
+          <div class="kpi-card"><div class="kpi-icon">💰</div><div><div class="kpi-value" id="kpiOmzetHari">Rp0</div><div class="kpi-label">Omzet Hari Ini</div></div></div>
+          <div class="kpi-card"><div class="kpi-icon">🧾</div><div><div class="kpi-value" id="kpiTrxHari">0</div><div class="kpi-label">Transaksi Hari Ini</div></div></div>
+          <div class="kpi-card"><div class="kpi-icon">📈</div><div><div class="kpi-value" id="kpiOmzetBulan">Rp0</div><div class="kpi-label">Omzet Bulan Ini</div></div></div>
+        </div>
+        <div class="card">
+          <h4>Produk Terlaris</h4>
+          <ul id="dashTerlaris" class="simple-list"></ul>
+        </div>
+      </section>
+
+      <!-- ---------------- PENGATURAN ---------------- -->
+      <section id="section-pengaturan" class="content-section">
+        <h3>Pengaturan Toko</h3>
+        <form id="pengaturanForm" class="card form-grid">
+          <div><label>Nama Toko</label><input type="text" id="stNamaToko" required></div>
+          <div><label>No. Telepon</label><input type="text" id="stTelepon"></div>
+          <div class="span-2"><label>Alamat</label><input type="text" id="stAlamat"></div>
+          <div class="span-2"><label>URL Logo</label><input type="text" id="stLogoUrl" placeholder="https://..."></div>
+          <div class="span-2"><label>Footer Struk</label><input type="text" id="stFooter"></div>
+          <div><label>Ukuran Kertas Printer</label>
+            <select id="stKertas"><option value="58">58 mm</option><option value="80">80 mm</option></select>
+          </div>
+          <div style="align-self:end">
+            <button type="button" class="btn-secondary" onclick="hubungkanPrinter()">🔵 Hubungkan Printer Bluetooth</button>
+          </div>
+          <div class="span-2"><button type="submit" class="btn-primary">Simpan Pengaturan</button></div>
+        </form>
+
+        <div class="card" style="margin-top:16px">
+          <h4>Import Produk dari CSV</h4>
+          <p style="font-size:0.85rem;color:var(--text-muted)">
+            Format kolom: Nama_Produk, Kategori, Harga_Beli, Harga_Jual, Stok, Satuan, Barcode.
+            Aman dijalankan berulang &mdash; produk dengan nama yang sama tidak akan dobel.
+          </p>
+          <input type="file" id="csvFile" accept=".csv">
+          <label style="display:flex;align-items:center;gap:6px;margin:10px 0;font-size:0.85rem">
+            <input type="checkbox" id="csvOverwrite" style="width:auto"> Timpa data produk yang sudah ada (update harga/stok)
+          </label>
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn-secondary" onclick="importProdukCsv(true)">🔍 Pindai (Dry-run)</button>
+            <button type="button" class="btn-primary" onclick="importProdukCsv(false)">Jalankan Import</button>
+          </div>
+          <div id="importReport" style="margin-top:10px;font-size:0.85rem"></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ======================= MODAL PRODUK ======================= -->
+<div id="modalProduk" class="modal">
+  <div class="modal-box">
+    <h3 id="produkModalTitle">Tambah Produk</h3>
+    <form id="produkForm" class="form-grid">
+      <input type="hidden" id="pmId">
+      <div class="span-2"><label>Nama Produk</label><input type="text" id="pmNama" required></div>
+      <div><label>Kategori</label><input type="text" id="pmKategori"></div>
+      <div><label>Satuan</label><input type="text" id="pmSatuan" placeholder="pcs"></div>
+      <div><label>Harga Beli</label><input type="number" id="pmHargaBeli" min="0"></div>
+      <div><label>Harga Jual</label><input type="number" id="pmHargaJual" min="0" required></div>
+      <div><label>Stok</label><input type="number" id="pmStok" min="0"></div>
+      <div><label>Barcode</label><input type="text" id="pmBarcode"></div>
+      <div class="span-2 modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeProdukModal()">Batal</button>
+        <button type="submit" class="btn-primary">Simpan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toastBox" class="toast-box"></div>
+
+<script src="./js/config.js"></script>
+<script src="./js/printer.js"></script>
+<script src="./js/app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js').catch(function (e) { console.warn('SW gagal:', e); });
+    });
+  }
+  let _installPrompt;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); _installPrompt = e; });
+</script>
+</body>
+</html>
