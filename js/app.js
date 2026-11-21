@@ -164,6 +164,7 @@ function navigateTo(sectionId) {
   if (sectionId === 'riwayat') loadRiwayat();
   if (sectionId === 'dashboard') loadDashboard();
   if (sectionId === 'pengaturan') renderPengaturanForm();
+  if (sectionId === 'akun') el('akNewNama').placeholder = 'Saat ini: ' + (appState.session.nama || '-');
 
   closeSidebarMobile();
 }
@@ -276,7 +277,8 @@ async function handleCheckout() {
   const btn = el('btnBayar');
   btn.disabled = true; btn.textContent = 'Memproses...';
   try {
-    const trx = await api('transaksi.checkout', { items: appState.cart, metodeBayar: 'Tunai' });
+    const metodeBayar = el('posMetode').value;
+    const trx = await api('transaksi.checkout', { items: appState.cart, metodeBayar: metodeBayar });
     showToast('✅ Transaksi tersimpan: ' + trx.ID_Transaksi, 'success');
 
     // kurangi stok lokal secara optimistik agar grid langsung update
@@ -379,13 +381,14 @@ async function loadRiwayat(filterTanggal) {
 function renderRiwayatTable(list) {
   const isOwner = appState.session.role === 'owner';
   const tbody = el('riwayatTableBody');
-  if (!list.length) { tbody.innerHTML = '<tr><td colspan="6">Belum ada transaksi.</td></tr>'; return; }
+  if (!list.length) { tbody.innerHTML = '<tr><td colspan="7">Belum ada transaksi.</td></tr>'; return; }
   tbody.innerHTML = list.map(function (r) {
     const batal = r.Status === 'Dibatalkan';
     return '<tr>' +
       '<td>' + r.ID_Transaksi + '</td>' +
       '<td>' + new Date(r.Tanggal_Waktu).toLocaleString('id-ID') + '</td>' +
       '<td>' + r.Kasir + '</td>' +
+      '<td>' + (r.Metode_Bayar || '-') + '</td>' +
       '<td>' + rupiah(r.Total_Bayar) + '</td>' +
       '<td><span class="badge ' + (batal ? 'badge-red' : 'badge-green') + '">' + r.Status + '</span></td>' +
       '<td>' +
@@ -403,7 +406,7 @@ async function cetakUlang(idTransaksi) {
   const trx = {
     ID_Transaksi: r.ID_Transaksi, Tanggal_Waktu: r.Tanggal_Waktu, Kasir: r.Kasir,
     Items: [{ Nama_Produk: 'Lihat Google Sheets Detail_Transaksi untuk rincian item', Qty: 1, Harga_Satuan: r.Total_Bayar }],
-    Subtotal: r.Subtotal, Diskon: r.Diskon, Total_Bayar: r.Total_Bayar
+    Subtotal: r.Subtotal, Diskon: r.Diskon, Total_Bayar: r.Total_Bayar, Metode_Bayar: r.Metode_Bayar
   };
   await Printer.cetakStruk(trx, appState.pengaturan);
 }
@@ -441,11 +444,15 @@ function renderPengaturanForm() {
   el('stAlamat').value = p.Alamat || '';
   el('stTelepon').value = p.No_Telepon || '';
   el('stLogoUrl').value = p.Logo_URL || '';
+  aturStatusLogo(p.Logo_URL || '');
   el('stFooter').value = p.Footer_Struk || '';
   el('stKertas').value = localStorage.getItem('kasirku_kertas') || '58';
   el('stTemplate').value = p.Template_Struk || Printer.templateDefault;
   renderPanduanTemplate();
-  pratinjauStruk();
+  // Pilih mode awal: bila template saat ini cocok hasil toggle Mode Mudah,
+  // buka Mode Mudah dengan centang sesuai; bila sudah diedit manual lebih
+  // rumit, buka Mode Lanjutan supaya kode yang sudah dibuat tidak tertimpa.
+  pilihModeTemplate(Printer.cocokDenganOpsi(el('stTemplate').value) ? 'mudah' : 'lanjutan');
 }
 async function submitPengaturanForm(e) {
   e.preventDefault();
@@ -464,6 +471,71 @@ async function submitPengaturanForm(e) {
     applyBranding();
     showToast('Pengaturan toko disimpan', 'success');
   } catch (e) { /* toast sudah tampil */ }
+}
+
+// ---- Upload logo dari perangkat (diubah jadi data gambar, bebas masalah CORS saat cetak) ----
+function aturStatusLogo(v) {
+  const status = el('stLogoStatus');
+  if (v && v.indexOf('data:') === 0) {
+    status.textContent = '✅ Logo tersimpan dari upload (' + Math.round(v.length / 1024) + ' KB)';
+  } else if (v) {
+    status.textContent = 'Memakai URL gambar eksternal.';
+  } else {
+    status.textContent = 'Belum ada logo.';
+  }
+}
+function hapusLogo() {
+  el('stLogoUrl').value = '';
+  el('stLogoFile').value = '';
+  aturStatusLogo('');
+  pratinjauStruk();
+}
+function resizeImageToDataUrl_(img, maxW) {
+  const scale = Math.min(1, maxW / img.naturalWidth);
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL('image/png');
+}
+async function handleLogoFile(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const status = el('stLogoStatus');
+  status.textContent = 'Memproses gambar...';
+  try {
+    const dataUrlAsli = await new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = function () { reject(new Error('Gagal membaca file.')); };
+      reader.readAsDataURL(file);
+    });
+    const img = await new Promise(function (resolve, reject) {
+      const im = new Image();
+      im.onload = function () { resolve(im); };
+      im.onerror = function () { reject(new Error('File yang dipilih bukan gambar yang valid.')); };
+      im.src = dataUrlAsli;
+    });
+    // Google Sheets membatasi ±50.000 karakter per sel — perkecil bertahap bila hasil kepanjangan.
+    let lebar = 280;
+    let hasil = resizeImageToDataUrl_(img, lebar);
+    while (hasil.length > 40000 && lebar > 80) {
+      lebar = Math.round(lebar * 0.7);
+      hasil = resizeImageToDataUrl_(img, lebar);
+    }
+    if (hasil.length > 40000) {
+      status.textContent = '⚠️ Gambar masih terlalu besar/rumit. Coba logo yang lebih sederhana (bentuk datar, bukan foto).';
+      return;
+    }
+    el('stLogoUrl').value = hasil;
+    aturStatusLogo(hasil);
+    pratinjauStruk();
+  } catch (err) {
+    status.textContent = '⚠️ ' + err.message;
+  }
 }
 
 // ---- Editor & pratinjau template struk (gas-struk-resi-printer) ----
@@ -501,6 +573,38 @@ function resetTemplateStruk() {
   el('stTemplate').value = Printer.templateDefault;
   pratinjauStruk();
   showToast('Template dikembalikan ke bawaan — klik Simpan Pengaturan untuk menyimpan', 'warning');
+}
+
+// ---- Mode Mudah vs Mode Lanjutan ----
+function pilihModeTemplate(mode) {
+  const mudah = mode === 'mudah';
+  el('templateModeMudah').style.display = mudah ? 'block' : 'none';
+  el('templateModeLanjutan').style.display = mudah ? 'none' : 'block';
+  el('btnModeMudah').classList.toggle('active', mudah);
+  el('btnModeLanjutan').classList.toggle('active', !mudah);
+  if (mudah) {
+    const opsi = Printer.opsiDariTemplate(el('stTemplate').value);
+    el('opLogo').checked = opsi.logo;
+    el('opAlamat').checked = opsi.alamat;
+    el('opTelepon').checked = opsi.telepon;
+    el('opMetode').checked = opsi.metode;
+    el('opQr').checked = opsi.qr;
+    terapkanOpsiMudah();
+  } else {
+    renderPanduanTemplate();
+    pratinjauStruk();
+  }
+}
+function terapkanOpsiMudah() {
+  const opsi = {
+    logo: el('opLogo').checked,
+    alamat: el('opAlamat').checked,
+    telepon: el('opTelepon').checked,
+    metode: el('opMetode').checked,
+    qr: el('opQr').checked
+  };
+  el('stTemplate').value = Printer.templateDariOpsi(opsi);
+  pratinjauStruk();
 }
 
 // ---- Import Produk dari CSV (gas-migrasi-database: upsert idempoten) ----
@@ -562,6 +666,10 @@ document.addEventListener('DOMContentLoaded', function () {
   el('produkForm').addEventListener('submit', submitProdukForm);
   el('pengaturanForm').addEventListener('submit', submitPengaturanForm);
   el('akunForm').addEventListener('submit', submitAkunForm);
+  el('stLogoFile').addEventListener('change', handleLogoFile);
+  ['opLogo', 'opAlamat', 'opTelepon', 'opMetode', 'opQr'].forEach(function (id) {
+    el(id).addEventListener('change', terapkanOpsiMudah);
+  });
 
   // Pratinjau struk live (debounced) saat template/field toko diubah
   let _previewTimer = null;
@@ -576,11 +684,12 @@ async function submitAkunForm(e) {
   e.preventDefault();
   const payload = {
     currentPassword: el('akCurPass').value,
+    newNama: el('akNewNama').value.trim(),
     newUsername: el('akNewUser').value.trim(),
     newPassword: el('akNewPass').value
   };
-  if (!payload.newUsername && !payload.newPassword) {
-    showToast('Isi username baru atau password baru dulu', 'warning');
+  if (!payload.newNama && !payload.newUsername && !payload.newPassword) {
+    showToast('Isi salah satu: nama tampilan, username baru, atau password baru', 'warning');
     return;
   }
   try {
