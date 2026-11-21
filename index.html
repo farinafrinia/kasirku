@@ -130,12 +130,32 @@
           <div style="align-self:end">
             <button type="button" class="btn-secondary" onclick="hubungkanPrinter()">🔵 Hubungkan Printer Bluetooth</button>
           </div>
-          <div class="span-2" style="display:flex;gap:18px;flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="stCetakLogo" style="width:auto"> Cetak logo toko di struk</label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="stCetakQr" style="width:auto"> Cetak QR code verifikasi di struk</label>
+          <div class="span-2">
+            <label>Template Struk <span style="font-weight:400;color:var(--text-muted)">(atur sendiri tampilan hasil print)</span></label>
+            <textarea id="stTemplate" rows="16" spellcheck="false"
+              style="width:100%;font-family:'Courier New',monospace;font-size:0.82rem;padding:10px;border:1px solid var(--border);border-radius:8px;white-space:pre"></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+              <button type="button" class="btn-secondary" onclick="pratinjauStruk()">👁️ Pratinjau</button>
+              <button type="button" class="btn-secondary" onclick="resetTemplateStruk()">↺ Kembalikan ke Bawaan</button>
+            </div>
+            <details style="margin-top:10px">
+              <summary style="cursor:pointer;font-size:0.85rem;color:var(--text-muted)">📖 Panduan kode template</summary>
+              <div id="panduanTemplate" style="font-size:0.78rem;margin-top:8px;line-height:1.6"></div>
+            </details>
           </div>
           <div class="span-2"><button type="submit" class="btn-primary">Simpan Pengaturan</button></div>
         </form>
+
+        <div class="card" style="margin-top:16px">
+          <h4>Pratinjau Struk</h4>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:-6px">
+            Contoh transaksi fiktif — pratinjau logo dimuat langsung dari URL (tanpa perlu CORS), jadi bisa tetap
+            tampil meski nanti gagal saat dikonversi untuk printer thermal (lihat peringatan di atasnya bila ada).
+          </p>
+          <div id="strukPreviewWrap" style="display:flex;justify-content:center;background:#f1f5f9;padding:16px;border-radius:8px">
+            <div id="strukPreview" style="width:300px;background:#fff;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,0.15);font-family:'Courier New',monospace;font-size:0.8rem"></div>
+          </div>
+        </div>
 
         <div class="card" style="margin-top:16px">
           <h4>Import Produk dari CSV</h4>
