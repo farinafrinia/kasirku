@@ -449,10 +449,15 @@ function renderPengaturanForm() {
   el('stKertas').value = localStorage.getItem('kasirku_kertas') || '58';
   el('stTemplate').value = p.Template_Struk || Printer.templateDefault;
   renderPanduanTemplate();
-  // Pilih mode awal: bila template saat ini cocok hasil toggle Mode Mudah,
-  // buka Mode Mudah dengan centang sesuai; bila sudah diedit manual lebih
-  // rumit, buka Mode Lanjutan supaya kode yang sudah dibuat tidak tertimpa.
-  pilihModeTemplate(Printer.cocokDenganOpsi(el('stTemplate').value) ? 'mudah' : 'lanjutan');
+  let blocksTersimpan = null;
+  try { blocksTersimpan = p.Template_Blocks ? JSON.parse(p.Template_Blocks) : null; } catch (e) { blocksTersimpan = null; }
+  appState.strukBlocks = Array.isArray(blocksTersimpan) && blocksTersimpan.length ? blocksTersimpan : Printer.blokDefault();
+  // Pilih mode awal: bila template tersimpan persis sama dengan hasil susunan
+  // blok tersimpan, buka Mode Mudah (aman, tetap sinkron). Bila sudah diedit
+  // manual lebih rumit di Mode Lanjutan, buka Mode Lanjutan agar kode yang
+  // sudah dibuat tidak diganti diam-diam oleh susunan blok lama.
+  const cocok = el('stTemplate').value.trim() === Printer.blocksToTemplate(appState.strukBlocks).trim();
+  pilihModeTemplate(cocok ? 'mudah' : 'lanjutan');
 }
 async function submitPengaturanForm(e) {
   e.preventDefault();
@@ -462,7 +467,8 @@ async function submitPengaturanForm(e) {
     No_Telepon: el('stTelepon').value.trim(),
     Logo_URL: el('stLogoUrl').value.trim(),
     Footer_Struk: el('stFooter').value.trim(),
-    Template_Struk: el('stTemplate').value
+    Template_Struk: el('stTemplate').value,
+    Template_Blocks: JSON.stringify(appState.strukBlocks || [])
   };
   localStorage.setItem('kasirku_kertas', el('stKertas').value);
   try {
@@ -583,28 +589,90 @@ function pilihModeTemplate(mode) {
   el('btnModeMudah').classList.toggle('active', mudah);
   el('btnModeLanjutan').classList.toggle('active', !mudah);
   if (mudah) {
-    const opsi = Printer.opsiDariTemplate(el('stTemplate').value);
-    el('opLogo').checked = opsi.logo;
-    el('opAlamat').checked = opsi.alamat;
-    el('opTelepon').checked = opsi.telepon;
-    el('opMetode').checked = opsi.metode;
-    el('opQr').checked = opsi.qr;
-    terapkanOpsiMudah();
+    renderStrukBlocks();
   } else {
     renderPanduanTemplate();
     pratinjauStruk();
   }
 }
-function terapkanOpsiMudah() {
-  const opsi = {
-    logo: el('opLogo').checked,
-    alamat: el('opAlamat').checked,
-    telepon: el('opTelepon').checked,
-    metode: el('opMetode').checked,
-    qr: el('opQr').checked
-  };
-  el('stTemplate').value = Printer.templateDariOpsi(opsi);
+
+// ---- Struk Builder (Mode Mudah): susun baris struk seperti formulir ----
+function escAttr_(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+function selectHtml_(onchange, options, current) {
+  return '<select onchange="' + onchange + '" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:0.8rem">' +
+    options.map(function (o) { return '<option value="' + o[0] + '"' + (current === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+    '</select>';
+}
+function blokRowHtml_(b, i, total) {
+  const label = Printer.labelBlok[b.type] || b.type;
+  let kontrol = '';
+  if (b.type === 'judul_toko' || b.type === 'teks' || b.type === 'footer') {
+    kontrol += selectHtml_('ubahBlokField(' + i + ",'align',this.value)", [['L', 'Kiri'], ['C', 'Tengah'], ['R', 'Kanan']], b.align || 'C');
+  }
+  if (b.type === 'judul_toko' || b.type === 'teks') {
+    kontrol += '<label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" style="width:auto"' +
+      (b.bold ? ' checked' : '') + ' onchange="ubahBlokField(' + i + ",'bold',this.checked)\"> Tebal</label>";
+    kontrol += selectHtml_('ubahBlokField(' + i + ",'size',this.value)", [['normal', 'Normal'], ['besar', 'Besar'], ['sangat_besar', 'Sangat Besar']], b.size || 'normal');
+  }
+  if (b.type === 'garis') {
+    kontrol += selectHtml_('ubahBlokField(' + i + ",'jenis',this.value)", [['putus', 'Putus-putus'], ['tebal', 'Tebal']], b.jenis || 'putus');
+  }
+  if (b.type === 'info_transaksi') {
+    kontrol += [['noStruk', 'No. Struk'], ['tanggal', 'Tanggal'], ['kasir', 'Kasir'], ['metode', 'Metode Bayar']].map(function (p) {
+      return '<label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" style="width:auto"' +
+        (b[p[0]] ? ' checked' : '') + ' onchange="ubahBlokField(' + i + ",'" + p[0] + "',this.checked)\"> " + p[1] + '</label>';
+    }).join('');
+  }
+  const teksField = b.type === 'teks'
+    ? '<input type="text" value="' + escAttr_(b.text) + '" oninput="ubahBlokTeks(' + i + ',this.value)" ' +
+      'placeholder="Tulis teks, bisa pakai {{TOKO_NAMA}} {{FOOTER}} dll" style="width:100%;margin-top:8px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem">'
+    : '';
+  return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px;background:#fff">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+      '<strong style="font-size:0.85rem">' + label + '</strong>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' + kontrol +
+        '<div style="display:flex;gap:4px">' +
+          '<button type="button" class="btn-sm btn-sm-outline" onclick="pindahBlok(' + i + ',-1)"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+          '<button type="button" class="btn-sm btn-sm-outline" onclick="pindahBlok(' + i + ',1)"' + (i === total - 1 ? ' disabled' : '') + '>↓</button>' +
+          '<button type="button" class="btn-sm" style="background:#dc2626" onclick="hapusBlok(' + i + ')">✕</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' + teksField +
+  '</div>';
+}
+function renderStrukBlocks() {
+  const list = appState.strukBlocks;
+  el('strukBlocks').innerHTML = list.length
+    ? list.map(function (b, i) { return blokRowHtml_(b, i, list.length); }).join('')
+    : '<p style="font-size:0.85rem;color:var(--text-muted)">Belum ada baris. Tambahkan dari daftar di bawah.</p>';
+  sinkronkanTemplateDariBlok();
+}
+function sinkronkanTemplateDariBlok() {
+  el('stTemplate').value = Printer.blocksToTemplate(appState.strukBlocks);
   pratinjauStruk();
+}
+function ubahBlokField(i, field, value) {
+  appState.strukBlocks[i][field] = value;
+  renderStrukBlocks();
+}
+function ubahBlokTeks(i, value) {
+  appState.strukBlocks[i].text = value;
+  sinkronkanTemplateDariBlok(); // tanpa render ulang daftar, supaya fokus ketik tidak hilang
+}
+function pindahBlok(i, arah) {
+  const arr = appState.strukBlocks;
+  const j = i + arah;
+  if (j < 0 || j >= arr.length) return;
+  const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+  renderStrukBlocks();
+}
+function hapusBlok(i) {
+  appState.strukBlocks.splice(i, 1);
+  renderStrukBlocks();
+}
+function tambahBlokStruk() {
+  appState.strukBlocks.push(Printer.blokBaru(el('tambahBlokTipe').value));
+  renderStrukBlocks();
 }
 
 // ---- Import Produk dari CSV (gas-migrasi-database: upsert idempoten) ----
@@ -667,9 +735,6 @@ document.addEventListener('DOMContentLoaded', function () {
   el('pengaturanForm').addEventListener('submit', submitPengaturanForm);
   el('akunForm').addEventListener('submit', submitAkunForm);
   el('stLogoFile').addEventListener('change', handleLogoFile);
-  ['opLogo', 'opAlamat', 'opTelepon', 'opMetode', 'opQr'].forEach(function (id) {
-    el(id).addEventListener('change', terapkanOpsiMudah);
-  });
 
   // Pratinjau struk live (debounced) saat template/field toko diubah
   let _previewTimer = null;
