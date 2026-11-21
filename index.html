@@ -155,15 +155,28 @@
               <button type="button" id="btnModeLanjutan" class="btn-secondary" onclick="pilihModeTemplate('lanjutan')">💻 Mode Lanjutan (kode)</button>
             </div>
 
-            <!-- MODE MUDAH: tinggal centang, tanpa perlu paham kode -->
-            <div id="templateModeMudah" style="display:none;padding:14px;background:#f8fafc;border:1px solid var(--border);border-radius:8px">
-              <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px">Centang bagian yang ingin ditampilkan di struk:</p>
-              <div style="display:flex;gap:16px;flex-wrap:wrap">
-                <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="opLogo" style="width:auto"> Logo toko</label>
-                <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="opAlamat" style="width:auto"> Alamat toko</label>
-                <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="opTelepon" style="width:auto"> No. Telepon</label>
-                <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="opMetode" style="width:auto"> Metode bayar</label>
-                <label style="display:flex;align-items:center;gap:6px;font-size:0.88rem"><input type="checkbox" id="opQr" style="width:auto"> QR code</label>
+            <!-- MODE MUDAH: susun struk seperti formulir — tambah/hapus/urutkan baris -->
+            <div id="templateModeMudah" style="display:none">
+              <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px">
+                Susun struk Anda baris demi baris. Pakai ↑↓ untuk mengurutkan, ✕ untuk menghapus, lalu atur rata/tebal/ukuran tiap baris.
+              </p>
+              <div id="strukBlocks" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;background:#f8fafc;border-radius:8px">
+                <select id="tambahBlokTipe" style="flex:1;min-width:180px;padding:9px 10px;border:1px solid var(--border);border-radius:8px">
+                  <option value="teks">Teks Bebas</option>
+                  <option value="garis">Garis Pembatas</option>
+                  <option value="spasi">Spasi Kosong</option>
+                  <option value="judul_toko">Nama Toko</option>
+                  <option value="alamat_toko">Alamat Toko</option>
+                  <option value="telepon_toko">No. Telepon Toko</option>
+                  <option value="info_transaksi">Info Transaksi (No/Tanggal/Kasir/Bayar)</option>
+                  <option value="daftar_item">Daftar Barang</option>
+                  <option value="ringkasan_total">Subtotal &amp; Total</option>
+                  <option value="logo">Logo</option>
+                  <option value="qr">QR Code</option>
+                  <option value="footer">Footer</option>
+                </select>
+                <button type="button" class="btn-primary" onclick="tambahBlokStruk()">+ Tambah Baris</button>
               </div>
             </div>
 
