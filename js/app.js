@@ -443,6 +443,8 @@ function renderPengaturanForm() {
   el('stLogoUrl').value = p.Logo_URL || '';
   el('stFooter').value = p.Footer_Struk || '';
   el('stKertas').value = localStorage.getItem('kasirku_kertas') || '58';
+  el('stCetakLogo').checked = localStorage.getItem('kasirku_cetak_logo') !== '0';
+  el('stCetakQr').checked = localStorage.getItem('kasirku_cetak_qr') !== '0';
 }
 async function submitPengaturanForm(e) {
   e.preventDefault();
@@ -454,6 +456,8 @@ async function submitPengaturanForm(e) {
     Footer_Struk: el('stFooter').value.trim()
   };
   localStorage.setItem('kasirku_kertas', el('stKertas').value);
+  localStorage.setItem('kasirku_cetak_logo', el('stCetakLogo').checked ? '1' : '0');
+  localStorage.setItem('kasirku_cetak_qr', el('stCetakQr').checked ? '1' : '0');
   try {
     await api('pengaturan.save', { pengaturan: pengaturan });
     appState.pengaturan = pengaturan;
@@ -520,4 +524,23 @@ document.addEventListener('DOMContentLoaded', function () {
   el('loginForm').addEventListener('submit', handleLogin);
   el('produkForm').addEventListener('submit', submitProdukForm);
   el('pengaturanForm').addEventListener('submit', submitPengaturanForm);
+  el('akunForm').addEventListener('submit', submitAkunForm);
 });
+
+async function submitAkunForm(e) {
+  e.preventDefault();
+  const payload = {
+    currentPassword: el('akCurPass').value,
+    newUsername: el('akNewUser').value.trim(),
+    newPassword: el('akNewPass').value
+  };
+  if (!payload.newUsername && !payload.newPassword) {
+    showToast('Isi username baru atau password baru dulu', 'warning');
+    return;
+  }
+  try {
+    await api('auth.changeCredentials', payload);
+    showToast('Akun diperbarui, silakan login ulang', 'success');
+    setTimeout(function () { doLogout(); }, 800);
+  } catch (e) { /* toast sudah tampil */ }
+}
