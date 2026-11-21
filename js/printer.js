@@ -61,17 +61,98 @@ const Printer = (function () {
   function cmdSize(w, h) { return [GS, 0x21, (w << 4) | h]; } // 0 normal, 1 2x
   function cmdFeed(n) { return [ESC, 0x64, n]; }
   function cmdCut() { return [GS, 0x56, 1]; }
-  function line(width) { return textToBytes('-'.repeat(width) + '\n'); }
+  function line(width) { return textToBytes('='.repeat(width) + '\n'); }
+  function thinLine(width) { return textToBytes('-'.repeat(width) + '\n'); }
+
+  // ---- Logo: ubah gambar menjadi raster ESC/POS (GS v 0) ----
+  function loadImageEl(url) {
+    return new Promise(function (resolve, reject) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { reject(new Error('Gambar logo gagal dimuat')); };
+      img.src = url;
+    });
+  }
+  async function imageToRaster(url, widthPx) {
+    const img = await loadImageEl(url);
+    const scale = widthPx / img.naturalWidth;
+    const w = widthPx, h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    let data;
+    try { data = ctx.getImageData(0, 0, w, h).data; }
+    catch (e) { throw new Error('Logo tidak bisa dibaca (CORS). Gunakan URL gambar yang mengizinkan akses lintas origin.'); }
+    const widthBytes = Math.ceil(w / 8);
+    const bytes = [];
+    for (let y = 0; y < h; y++) {
+      for (let xB = 0; xB < widthBytes; xB++) {
+        let byte = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = xB * 8 + bit;
+          let on = 0;
+          if (x < w) {
+            const idx = (y * w + x) * 4;
+            const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+            const alpha = data[idx + 3];
+            on = (alpha > 80 && gray < 160) ? 1 : 0;
+          }
+          byte |= on << (7 - bit);
+        }
+        bytes.push(byte);
+      }
+    }
+    return { widthBytes: widthBytes, height: h, bytes: bytes };
+  }
+  function cmdRaster(raster) {
+    const xL = raster.widthBytes & 0xff, xH = (raster.widthBytes >> 8) & 0xff;
+    const yL = raster.height & 0xff, yH = (raster.height >> 8) & 0xff;
+    return [GS, 0x76, 0x30, 0, xL, xH, yL, yH].concat(raster.bytes);
+  }
+
+  // ---- QR Code: perintah bawaan firmware printer (GS ( k) ----
+  function cmdQr(data, moduleSize) {
+    const bytes = textToBytes(data);
+    const storeLen = bytes.length + 3;
+    const pL = storeLen & 0xff, pH = (storeLen >> 8) & 0xff;
+    let cmds = [];
+    cmds = cmds.concat([GS, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]);           // model 2
+    cmds = cmds.concat([GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, moduleSize || 5]);        // ukuran modul
+    cmds = cmds.concat([GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31]);                  // koreksi error: M
+    cmds = cmds.concat([GS, 0x28, 0x6b, pL, pH, 0x31, 0x50, 0x30], bytes);                // simpan data
+    cmds = cmds.concat([GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30]);                  // cetak
+    return cmds;
+  }
 
   function rupiah(n) {
     return 'Rp' + Number(n || 0).toLocaleString('id-ID');
   }
 
   // width58 = 32 kolom, width80 = 48 kolom (perkiraan font default)
-  function buildReceipt(trx, toko, kertas) {
+  // widthPx58 = 384 dot, widthPx80 = 576 dot (umum untuk resolusi 203dpi)
+  async function buildReceipt(trx, toko, kertas) {
     const W = kertas === '80' ? 48 : 32;
+    const widthPx = kertas === '80' ? 576 : 384;
+    const cetakLogo = localStorage.getItem('kasirku_cetak_logo') !== '0';
+    const cetakQr = localStorage.getItem('kasirku_cetak_qr') !== '0';
+
     let b = [];
     b = b.concat(cmdInit());
+
+    // ---- Logo toko (opsional) ----
+    if (cetakLogo && toko.Logo_URL) {
+      try {
+        const raster = await imageToRaster(toko.Logo_URL, widthPx);
+        b = b.concat(cmdAlign(1), cmdRaster(raster), textToBytes('\n'));
+      } catch (e) {
+        console.warn('Lewati logo:', e.message);
+      }
+    }
+
+    // ---- Kop toko ----
     b = b.concat(cmdAlign(1), cmdBold(true), cmdSize(1, 1));
     b = b.concat(textToBytes((toko.Nama_Toko || 'KasirKu') + '\n'));
     b = b.concat(cmdSize(0, 0), cmdBold(false));
@@ -79,11 +160,14 @@ const Printer = (function () {
     if (toko.No_Telepon) b = b.concat(textToBytes(toko.No_Telepon + '\n'));
     b = b.concat(cmdAlign(0));
     b = b.concat(line(W));
-    b = b.concat(textToBytes('No: ' + trx.ID_Transaksi + '\n'));
-    b = b.concat(textToBytes(new Date(trx.Tanggal_Waktu).toLocaleString('id-ID') + '\n'));
-    b = b.concat(textToBytes('Kasir: ' + (trx.Kasir || '-') + '\n'));
-    b = b.concat(line(W));
 
+    // ---- Info transaksi ----
+    b = b.concat(textToBytes('No. Struk : ' + trx.ID_Transaksi + '\n'));
+    b = b.concat(textToBytes('Tanggal   : ' + new Date(trx.Tanggal_Waktu).toLocaleString('id-ID') + '\n'));
+    b = b.concat(textToBytes('Kasir     : ' + (trx.Kasir || '-') + '\n'));
+    b = b.concat(thinLine(W));
+
+    // ---- Daftar item ----
     trx.Items.forEach(function (it) {
       const nama = String(it.Nama_Produk);
       b = b.concat(textToBytes(nama.length > W ? nama.slice(0, W) + '\n' : nama + '\n'));
@@ -93,26 +177,32 @@ const Printer = (function () {
       b = b.concat(textToBytes(kiri + ' '.repeat(spasi) + kanan + '\n'));
     });
 
-    b = b.concat(line(W));
+    b = b.concat(thinLine(W));
     const row = function (label, val) {
       const spasi = Math.max(1, W - label.length - val.length);
       return textToBytes(label + ' '.repeat(spasi) + val + '\n');
     };
     b = b.concat(row('Subtotal', rupiah(trx.Subtotal)));
     if (trx.Diskon) b = b.concat(row('Diskon', '-' + rupiah(trx.Diskon)));
-    b = b.concat(cmdBold(true));
+    b = b.concat(cmdBold(true), cmdSize(0, 1));
     b = b.concat(row('TOTAL', rupiah(trx.Total_Bayar)));
-    b = b.concat(cmdBold(false));
+    b = b.concat(cmdSize(0, 0), cmdBold(false));
     b = b.concat(line(W));
+
+    // ---- Footer & QR verifikasi (opsional) ----
     b = b.concat(cmdAlign(1));
     b = b.concat(textToBytes((toko.Footer_Struk || 'Terima kasih') + '\n'));
+    if (cetakQr) {
+      const payload = 'KasirKu|' + trx.ID_Transaksi + '|' + rupiah(trx.Total_Bayar) + '|' + new Date(trx.Tanggal_Waktu).toLocaleString('id-ID');
+      b = b.concat(textToBytes('\n'), cmdQr(payload, kertas === '80' ? 6 : 5), textToBytes('\n'));
+    }
     b = b.concat(cmdFeed(3));
     b = b.concat(cmdCut());
     return b;
   }
 
   async function printThermal(trx, toko, kertas) {
-    const bytes = buildReceipt(trx, toko, kertas || localStorage.getItem('kasirku_kertas') || '58');
+    const bytes = await buildReceipt(trx, toko, kertas || localStorage.getItem('kasirku_kertas') || '58');
     await writeBytes(bytes);
   }
 
