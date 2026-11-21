@@ -137,30 +137,52 @@ const Printer = (function () {
   // sendiri tanpa menyentuh kode. Lihat Printer.templateDefault &
   // Printer.panduanTemplate untuk daftar lengkap direktif/variabel.
   // ============================================================
-  const TEMPLATE_DEFAULT = [
-    '[LOGO]',
-    '[C][B][2]{{TOKO_NAMA}}',
-    '{{?TOKO_ALAMAT}}[C]{{TOKO_ALAMAT}}',
-    '{{/TOKO_ALAMAT}}{{?TOKO_WA}}[C]{{TOKO_WA}}',
-    '{{/TOKO_WA}}[=]',
-    'No. Struk : {{NOTA}}',
-    'Tanggal   : {{TANGGAL|tgl}} {{JAM}}',
-    'Kasir     : {{KASIR}}',
-    '[-]',
-    '{{#ITEM}}',
-    '{{NAMA}}',
-    '[LR]{{QTY}} x {{HARGA|rp}}||{{SUB|rp}}',
-    '{{/ITEM}}',
-    '[-]',
-    '[LR]Subtotal||{{SUBTOTAL|rp}}',
-    '{{?DISKON}}[LR]Diskon||-{{DISKON|rp}}',
-    '{{/DISKON}}[B][H][LR]TOTAL||{{TOTAL|rp}}',
-    '[=]',
-    '[C]{{FOOTER}}',
-    '[C][QR]',
-    '[FEED]',
-    '[CUT]'
-  ].join('\n');
+  // ---- Mode Mudah: susun template dari toggle klik-klik (tanpa kode) ----
+  // Didefinisikan di sini (sebelum dipakai) agar TEMPLATE_DEFAULT selalu
+  // identik dengan hasil toggle "semua aktif" — satu sumber kebenaran,
+  // tidak ada dua definisi template bawaan yang bisa melenceng satu sama lain.
+  function templateDariOpsi(opsi) {
+    const baris = [];
+    if (opsi.logo) baris.push('[LOGO]');
+    baris.push('[C][B][2]{{TOKO_NAMA}}');
+    if (opsi.alamat) baris.push('{{?TOKO_ALAMAT}}[C]{{TOKO_ALAMAT}}', '{{/TOKO_ALAMAT}}');
+    if (opsi.telepon) baris.push('{{?TOKO_WA}}[C]{{TOKO_WA}}', '{{/TOKO_WA}}');
+    baris.push('[=]');
+    baris.push('No. Struk : {{NOTA}}');
+    baris.push('Tanggal   : {{TANGGAL|tgl}} {{JAM}}');
+    baris.push('Kasir     : {{KASIR}}');
+    if (opsi.metode) baris.push('Bayar     : {{METODE}}');
+    baris.push('[-]');
+    baris.push('{{#ITEM}}', '{{NAMA}}', '[LR]{{QTY}} x {{HARGA|rp}}||{{SUB|rp}}', '{{/ITEM}}');
+    baris.push('[-]');
+    baris.push('[LR]Subtotal||{{SUBTOTAL|rp}}');
+    baris.push('{{?DISKON}}[LR]Diskon||-{{DISKON|rp}}', '{{/DISKON}}[B][H][LR]TOTAL||{{TOTAL|rp}}');
+    baris.push('[=]');
+    baris.push('[C]{{FOOTER}}');
+    if (opsi.qr) baris.push('[C][QR]');
+    baris.push('[FEED]');
+    baris.push('[CUT]');
+    return baris.join('\n');
+  }
+  // Tebak toggle dari teks template yang ada sekarang — dipakai untuk mengisi
+  // Mode Mudah saat pertama dibuka, dan untuk mendeteksi apakah template saat
+  // ini "cocok" dibuat dari toggle (bukan hasil edit manual yang lebih rumit).
+  function opsiDariTemplate(tpl) {
+    tpl = tpl || '';
+    return {
+      logo: tpl.indexOf('[LOGO]') > -1,
+      alamat: tpl.indexOf('TOKO_ALAMAT') > -1,
+      telepon: tpl.indexOf('TOKO_WA') > -1,
+      metode: tpl.indexOf('{{METODE}}') > -1,
+      qr: tpl.indexOf('[QR]') > -1
+    };
+  }
+  function cocokDenganOpsi(tpl) {
+    const opsi = opsiDariTemplate(tpl);
+    return (tpl || '').trim() === templateDariOpsi(opsi).trim();
+  }
+
+  const TEMPLATE_DEFAULT = templateDariOpsi({ logo: true, alamat: true, telepon: true, metode: true, qr: true });
 
   const PANDUAN_TEMPLATE = [
     { kode: '[C] [L] [R]', ket: 'Rata tengah / kiri / kanan untuk baris itu' },
@@ -175,7 +197,7 @@ const Printer = (function () {
     { kode: '[FEED]', ket: 'Beri jarak/baris kosong' },
     { kode: '[CUT]', ket: 'Potong kertas otomatis — wajib ada di baris terakhir template' },
     { kode: '{{TOKO_NAMA}} {{TOKO_ALAMAT}} {{TOKO_WA}}', ket: 'Data toko dari Pengaturan' },
-    { kode: '{{NOTA}} {{TANGGAL|tgl}} {{JAM}} {{KASIR}}', ket: 'Data transaksi' },
+    { kode: '{{NOTA}} {{TANGGAL|tgl}} {{JAM}} {{KASIR}} {{METODE}}', ket: 'Data transaksi (METODE = Tunai/Non Tunai)' },
     { kode: '{{#ITEM}} ... {{/ITEM}}', ket: 'Diulang untuk setiap barang. Di dalamnya pakai {{NAMA}} {{QTY}} {{HARGA|rp}} {{SUB|rp}}' },
     { kode: '{{?KUNCI}} ... {{/KUNCI}}', ket: 'Baris di dalamnya hanya dicetak bila KUNCI berisi/tidak nol, mis. {{?DISKON}}...{{/DISKON}}' },
     { kode: '{{SUBTOTAL|rp}} {{TOTAL|rp}} {{DISKON|rp}}', ket: 'Angka uang' },
@@ -193,6 +215,7 @@ const Printer = (function () {
       TANGGAL: tgl.toISOString(),
       JAM: tgl.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
       KASIR: trx.Kasir || '-',
+      METODE: trx.Metode_Bayar || 'Tunai',
       ITEM: (trx.Items || []).map(function (it) {
         return { NAMA: it.Nama_Produk, QTY: it.Qty, HARGA: it.Harga_Satuan, SUB: it.Qty * it.Harga_Satuan };
       }),
@@ -402,7 +425,7 @@ const Printer = (function () {
   }
   function contohTrx() {
     return {
-      ID_Transaksi: 'TRX-CONTOH', Tanggal_Waktu: new Date().toISOString(), Kasir: 'Owner',
+      ID_Transaksi: 'TRX-CONTOH', Tanggal_Waktu: new Date().toISOString(), Kasir: 'Owner', Metode_Bayar: 'Tunai',
       Items: [
         { Nama_Produk: 'Nasi Lalap', Qty: 2, Harga_Satuan: 10000 },
         { Nama_Produk: 'Es Teh Manis', Qty: 1, Harga_Satuan: 5000 }
@@ -444,6 +467,7 @@ const Printer = (function () {
   return {
     isSupported, connect, isConnected, cetakStruk, printFallback,
     renderPreviewHtml, contohTrx,
+    templateDariOpsi, opsiDariTemplate, cocokDenganOpsi,
     templateDefault: TEMPLATE_DEFAULT,
     panduanTemplate: PANDUAN_TEMPLATE
   };
