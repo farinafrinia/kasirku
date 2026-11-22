@@ -74,6 +74,10 @@
                   <option value="Non Tunai">💳 Non Tunai (QRIS/Debit/Transfer)</option>
                 </select>
               </div>
+              <div style="margin-bottom:10px">
+                <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">Model Struk</label>
+                <select id="posTemplate" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px"></select>
+              </div>
               <button id="btnBayar" class="btn-primary btn-block" onclick="handleCheckout()" disabled>Bayar &amp; Cetak Struk</button>
             </div>
           </div>
@@ -149,7 +153,17 @@
             <button type="button" class="btn-secondary" onclick="hubungkanPrinter()">🔵 Hubungkan Printer Bluetooth</button>
           </div>
           <div class="span-2">
-            <label>Tampilan Struk</label>
+            <label>Galeri Template Struk</label>
+            <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px">
+              Pilih model siap pakai sesuai jenis usaha, lalu klik "Gunakan" untuk memuatnya ke editor di bawah
+              (jangan lupa klik "Simpan Pengaturan" setelahnya). Anda juga bisa menyimpan hasil racikan sendiri sebagai template baru.
+            </p>
+            <div id="galeriTemplate" style="display:flex;flex-direction:column;gap:14px;margin-bottom:14px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:16px">
+              <button type="button" class="btn-secondary" onclick="simpanTemplateKeLibrary()">💾 Simpan Racikan Ini sebagai Template Baru</button>
+            </div>
+
+            <label>Tampilan Struk Aktif (dipakai sebagai default saat tidak memilih template lain)</label>
             <div style="display:flex;gap:8px;margin-bottom:10px">
               <button type="button" id="btnModeMudah" class="btn-secondary" onclick="pilihModeTemplate('mudah')">🔘 Mode Mudah</button>
               <button type="button" id="btnModeLanjutan" class="btn-secondary" onclick="pilihModeTemplate('lanjutan')">💻 Mode Lanjutan (kode)</button>
