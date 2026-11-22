@@ -155,7 +155,11 @@ const Printer = (function () {
     if (type === 'teks') { b.align = 'C'; b.bold = false; b.size = 'normal'; b.boxed = false; b.text = 'Tulis teks di sini'; }
     if (type === 'footer') { b.align = 'C'; }
     if (type === 'garis') { b.jenis = 'putus'; }
-    if (type === 'info_transaksi') { b.noStruk = true; b.tanggal = true; b.kasir = true; b.metode = true; }
+    // Catatan: "Metode Bayar" sengaja TIDAK ada di info_transaksi (atas) — sesuai
+    // permintaan pengguna, baris Bayar ditaruh di bawah, menyatu dengan
+    // ringkasan_total (dekat TOTAL), bukan di dekat No. Struk/Tanggal/Kasir.
+    if (type === 'info_transaksi') { b.noStruk = true; b.tanggal = true; b.kasir = true; }
+    if (type === 'ringkasan_total') { b.totalBoxed = false; b.metode = true; }
     return b;
   }
   function blokDefault() {
@@ -169,7 +173,7 @@ const Printer = (function () {
       { type: 'garis', jenis: 'putus' },
       { type: 'daftar_item' },
       { type: 'garis', jenis: 'putus' },
-      { type: 'ringkasan_total' },
+      blokBaru('ringkasan_total'),
       { type: 'garis', jenis: 'tebal' },
       blokBaru('footer'),
       { type: 'qr' }
@@ -181,10 +185,10 @@ const Printer = (function () {
   function templatePresetDefault() {
     const T = function (text, opt) { return Object.assign({ type: 'teks', align: 'C', bold: false, size: 'normal', boxed: false, text: text }, opt || {}); };
     const G = function (jenis) { return { type: 'garis', jenis: jenis }; };
-    const INFO = function (opt) { return Object.assign({ type: 'info_transaksi', noStruk: true, tanggal: true, kasir: true, metode: true }, opt || {}); };
+    const INFO = function (opt) { return Object.assign({ type: 'info_transaksi', noStruk: true, tanggal: true, kasir: true }, opt || {}); };
     const JUDUL = function (opt) { return Object.assign({ type: 'judul_toko', align: 'C', bold: true, size: 'sangat_besar', boxed: false }, opt || {}); };
     const ALAMAT = { type: 'alamat_toko' }, TELP = { type: 'telepon_toko' }, LOGO = { type: 'logo' }, QR = { type: 'qr' }, ITEM = { type: 'daftar_item' };
-    const TOTAL = function (opt) { return Object.assign({ type: 'ringkasan_total', totalBoxed: false }, opt || {}); };
+    const TOTAL = function (opt) { return Object.assign({ type: 'ringkasan_total', totalBoxed: false, metode: true }, opt || {}); };
     const FOOTER = function (opt) { return Object.assign({ type: 'footer', align: 'C' }, opt || {}); };
 
     return [
@@ -294,11 +298,15 @@ const Printer = (function () {
         if (b.noStruk) baris.push('No. Struk : {{NOTA}}');
         if (b.tanggal) baris.push('Tanggal   : {{TANGGAL|tgl}} {{JAM}}');
         if (b.kasir) baris.push('Kasir     : {{KASIR}}');
-        if (b.metode) baris.push('Bayar     : {{METODE}}');
         return baris;
       }
       case 'daftar_item': return ['{{#ITEM}}', '{{NAMA}}', '[LR]{{QTY}} x {{HARGA|rp}}||{{SUB|rp}}', '{{/ITEM}}'];
-      case 'ringkasan_total': return ['[LR]Subtotal||{{SUBTOTAL|rp}}', '{{?DISKON}}[LR]Diskon||-{{DISKON|rp}}', '{{/DISKON}}[B][H]' + (b.totalBoxed ? '[BOX]' : '') + '[LR]TOTAL||{{TOTAL|rp}}'];
+      case 'ringkasan_total': {
+        const baris = ['[LR]Subtotal||{{SUBTOTAL|rp}}', '{{?DISKON}}[LR]Diskon||-{{DISKON|rp}}', '{{/DISKON}}[B][H]' + (b.totalBoxed ? '[BOX]' : '') + '[LR]TOTAL||{{TOTAL|rp}}'];
+        // Baris Bayar ditaruh DI BAWAH, setelah TOTAL — bukan di atas dekat No. Struk.
+        if (b.metode) baris.push('[LR]Metode Bayar||{{METODE}}');
+        return baris;
+      }
       case 'footer': return [(b.align === 'L' ? '[L]' : b.align === 'R' ? '[R]' : '[C]') + '{{FOOTER}}'];
       case 'qr': return ['[C][QR]'];
       default: return [];
