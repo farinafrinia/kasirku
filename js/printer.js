@@ -159,7 +159,8 @@ const Printer = (function () {
     // permintaan pengguna, baris Bayar ditaruh di bawah, menyatu dengan
     // ringkasan_total (dekat TOTAL), bukan di dekat No. Struk/Tanggal/Kasir.
     if (type === 'info_transaksi') { b.noStruk = true; b.tanggal = true; b.kasir = true; }
-    if (type === 'ringkasan_total') { b.totalBoxed = false; b.metode = true; }
+    if (type === 'daftar_item') { b.headerKolom = false; }
+    if (type === 'ringkasan_total') { b.totalBoxed = false; b.metode = true; b.bayarTunai = true; }
     return b;
   }
   function blokDefault() {
@@ -188,7 +189,8 @@ const Printer = (function () {
     const INFO = function (opt) { return Object.assign({ type: 'info_transaksi', noStruk: true, tanggal: true, kasir: true }, opt || {}); };
     const JUDUL = function (opt) { return Object.assign({ type: 'judul_toko', align: 'C', bold: true, size: 'sangat_besar', boxed: false }, opt || {}); };
     const ALAMAT = { type: 'alamat_toko' }, TELP = { type: 'telepon_toko' }, LOGO = { type: 'logo' }, QR = { type: 'qr' }, ITEM = { type: 'daftar_item' };
-    const TOTAL = function (opt) { return Object.assign({ type: 'ringkasan_total', totalBoxed: false, metode: true }, opt || {}); };
+    const ITEM_HDR = { type: 'daftar_item', headerKolom: true };
+    const TOTAL = function (opt) { return Object.assign({ type: 'ringkasan_total', totalBoxed: false, metode: true, bayarTunai: true }, opt || {}); };
     const FOOTER = function (opt) { return Object.assign({ type: 'footer', align: 'C' }, opt || {}); };
 
     return [
@@ -212,6 +214,30 @@ const Printer = (function () {
           LOGO, JUDUL(), ALAMAT, TELP, G('tebal'), INFO(), G('putus'), ITEM, G('putus'),
           TOTAL({ totalBoxed: true }), G('tebal'),
           T('Terima kasih telah berkunjung, sampai jumpa lagi!'),
+          FOOTER(), QR
+        ]
+      },
+      // 3 template tambahan berikut meniru TATA LETAK dari contoh struk nyata yang
+      // dikirim pengguna (bukan logo/merek — hanya susunan & gaya baris-barisnya).
+      {
+        id: 'cafe4', nama: 'Resto Kolom Lengkap (Subtotal, Pajak, Total Besar)', kategori: 'cafe', blocks: [
+          JUDUL({ size: 'besar' }), ALAMAT, TELP, G('tebal'), INFO(), G('putus'),
+          ITEM_HDR, G('putus'), TOTAL({ totalBoxed: true, metode: false }),
+          FOOTER()
+        ]
+      },
+      {
+        id: 'cafe5', nama: 'Kasir POS Modern (Struk Kertas Kasir)', kategori: 'cafe', blocks: [
+          LOGO, JUDUL(), ALAMAT, TELP,
+          T('RECEIPT', { bold: true }), G('putus'), INFO(), G('putus'),
+          ITEM_HDR, G('putus'), TOTAL({ totalBoxed: true }), G('tebal'), FOOTER(), QR
+        ]
+      },
+      {
+        id: 'cafe6', nama: 'Kedai Minuman Kekinian (Nomor Order Besar)', kategori: 'cafe', blocks: [
+          LOGO, T('ORDER NO: {{NOTA}}', { bold: true, size: 'sangat_besar' }), G('putus'),
+          INFO({ noStruk: false }), G('putus'), ITEM, G('putus'), TOTAL({ totalBoxed: true }), G('tebal'),
+          T('Terima kasih, sampai jumpa lagi! 💛'),
           FOOTER(), QR
         ]
       },
@@ -300,11 +326,19 @@ const Printer = (function () {
         if (b.kasir) baris.push('Kasir     : {{KASIR}}');
         return baris;
       }
-      case 'daftar_item': return ['{{#ITEM}}', '{{NAMA}}', '[LR]{{QTY}} x {{HARGA|rp}}||{{SUB|rp}}', '{{/ITEM}}'];
+      case 'daftar_item': {
+        const baris = [];
+        if (b.headerKolom) baris.push('[LR]Nama Barang||Jumlah', '[-]');
+        baris.push('{{#ITEM}}', '{{NAMA}}', '[LR]{{QTY}} x {{HARGA|rp}}||{{SUB|rp}}', '{{/ITEM}}');
+        return baris;
+      }
       case 'ringkasan_total': {
-        const baris = ['[LR]Subtotal||{{SUBTOTAL|rp}}', '{{?DISKON}}[LR]Diskon||-{{DISKON|rp}}', '{{/DISKON}}[B][H]' + (b.totalBoxed ? '[BOX]' : '') + '[LR]TOTAL||{{TOTAL|rp}}'];
-        // Baris Bayar ditaruh DI BAWAH, setelah TOTAL — bukan di atas dekat No. Struk.
+        const baris = ['[LR]Subtotal||{{SUBTOTAL|rp}}', '{{?DISKON}}[LR]Diskon||-{{DISKON|rp}}', '{{/DISKON}}',
+          '{{?PAJAK}}[LR]Pajak||{{PAJAK|rp}}', '{{/PAJAK}}',
+          '[B][H]' + (b.totalBoxed ? '[BOX]' : '') + '[LR]TOTAL||{{TOTAL|rp}}'];
+        // Baris Bayar/Tunai/Kembalian ditaruh DI BAWAH, setelah TOTAL — bukan di atas dekat No. Struk.
         if (b.metode) baris.push('[LR]Metode Bayar||{{METODE}}');
+        if (b.bayarTunai) baris.push('{{?TUNAI}}[LR]Tunai||{{DITERIMA|rp}}', '[LR]Kembali||{{KEMBALI|rp}}', '{{/TUNAI}}');
         return baris;
       }
       case 'footer': return [(b.align === 'L' ? '[L]' : b.align === 'R' ? '[R]' : '[C]') + '{{FOOTER}}'];
@@ -337,7 +371,9 @@ const Printer = (function () {
     { kode: '{{NOTA}} {{TANGGAL|tgl}} {{JAM}} {{KASIR}} {{METODE}}', ket: 'Data transaksi (METODE = Tunai/Non Tunai)' },
     { kode: '{{#ITEM}} ... {{/ITEM}}', ket: 'Diulang untuk setiap barang. Di dalamnya pakai {{NAMA}} {{QTY}} {{HARGA|rp}} {{SUB|rp}}' },
     { kode: '{{?KUNCI}} ... {{/KUNCI}}', ket: 'Baris di dalamnya hanya dicetak bila KUNCI berisi/tidak nol, mis. {{?DISKON}}...{{/DISKON}}' },
-    { kode: '{{SUBTOTAL|rp}} {{TOTAL|rp}} {{DISKON|rp}}', ket: 'Angka uang' },
+    { kode: '{{SUBTOTAL|rp}} {{TOTAL|rp}} {{DISKON|rp}} {{PAJAK|rp}}', ket: 'Angka uang' },
+    { kode: '{{DITERIMA|rp}} {{KEMBALI|rp}}', ket: 'Uang tunai diterima & kembalian (hanya bermakna saat METODE=Tunai)' },
+    { kode: '{{?TUNAI}} ... {{/TUNAI}}', ket: 'Baris di dalamnya hanya dicetak bila metode bayar Tunai' },
     { kode: '{{FOOTER}}', ket: 'Teks footer dari Pengaturan' },
     { kode: '|rp |angka |kapital |kecil |tgl', ket: 'Filter format: Rupiah, angka ribuan, HURUF BESAR, huruf kecil, tanggal Indonesia' }
   ];
@@ -358,7 +394,11 @@ const Printer = (function () {
       }),
       SUBTOTAL: trx.Subtotal || 0,
       DISKON: trx.Diskon || 0,
+      PAJAK: trx.Pajak || 0,
       TOTAL: trx.Total_Bayar || 0,
+      TUNAI: (trx.Metode_Bayar || 'Tunai') === 'Tunai',
+      DITERIMA: trx.Diterima !== undefined ? trx.Diterima : (trx.Total_Bayar || 0),
+      KEMBALI: trx.Kembalian || 0,
       FOOTER: toko.Footer_Struk || 'Terima kasih atas kunjungan Anda'
     };
   }
@@ -570,7 +610,7 @@ const Printer = (function () {
         { Nama_Produk: 'Nasi Lalap', Qty: 2, Harga_Satuan: 10000 },
         { Nama_Produk: 'Es Teh Manis', Qty: 1, Harga_Satuan: 5000 }
       ],
-      Subtotal: 25000, Diskon: 0, Total_Bayar: 25000
+      Subtotal: 25000, Diskon: 0, Pajak: 2500, Total_Bayar: 27500, Diterima: 30000, Kembalian: 2500
     };
   }
 
