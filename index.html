@@ -76,7 +76,10 @@
               </div>
               <div style="margin-bottom:10px">
                 <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">Model Struk</label>
-                <select id="posTemplate" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px"></select>
+                <div style="display:flex;gap:6px">
+                  <select id="posTemplate" onchange="tampilkanPratinjauTemplate(this.value)" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px"></select>
+                  <button type="button" class="btn-secondary" onclick="tampilkanPratinjauTemplate(el('posTemplate').value)" title="Lihat pratinjau">👁️</button>
+                </div>
               </div>
               <button id="btnBayar" class="btn-primary btn-block" onclick="handleCheckout()" disabled>Bayar &amp; Cetak Struk</button>
             </div>
@@ -280,6 +283,19 @@
         <button type="submit" class="btn-primary">Simpan</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- ======================= MODAL PRATINJAU TEMPLATE STRUK ======================= -->
+<div id="modalPreviewTemplate" class="modal">
+  <div class="modal-box" style="max-width:340px">
+    <h3 id="previewTemplateTitle">Pratinjau Struk</h3>
+    <div style="display:flex;justify-content:center;background:#f1f5f9;padding:16px;border-radius:8px;margin:10px 0">
+      <div id="previewTemplateReceipt" style="width:260px;background:#fff;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,0.15);font-family:'Courier New',monospace;font-size:0.78rem"></div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closePreviewTemplateModal()">Tutup</button>
+    </div>
   </div>
 </div>
 
