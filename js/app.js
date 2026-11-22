@@ -487,6 +487,7 @@ function renderGaleriTemplate() {
       return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff">' +
         '<span style="font-size:0.88rem">' + t.nama + '</span>' +
         '<span style="display:flex;gap:6px">' +
+          '<button type="button" class="btn-sm btn-sm-outline" onclick="tampilkanPratinjauTemplate(\'' + t.id + '\')" title="Lihat pratinjau">👁️ Pratinjau</button>' +
           '<button type="button" class="btn-sm" onclick="gunakanTemplateGaleri(\'' + t.id + '\')">Gunakan</button>' +
           (custom ? '<button type="button" class="btn-sm btn-sm-outline" onclick="hapusTemplateCustom(\'' + t.id + '\')">Hapus</button>' : '') +
         '</span></div>';
@@ -562,6 +563,25 @@ function tokoUntukCetak_() {
   const idTerpilih = sel ? sel.value : '__aktif__';
   if (sel) localStorage.setItem('kasirku_template_pilihan', idTerpilih);
   return Object.assign({}, appState.pengaturan, { Template_Struk: Printer.templateUntukId(appState.pengaturan, idTerpilih) });
+}
+
+// ---- Pratinjau template (dipakai dari dropdown Kasir maupun Galeri di Pengaturan) ----
+function tampilkanPratinjauTemplate(id) {
+  try {
+    const tpl = Printer.templateUntukId(appState.pengaturan, id);
+    const kertas = localStorage.getItem('kasirku_kertas') || '58';
+    const html = Printer.renderPreviewHtml(tpl, Printer.contohTrx(), appState.pengaturan, kertas);
+    const semua = Printer.daftarLibrary(appState.pengaturan);
+    const t = semua.find(function (x) { return x.id === id; });
+    el('previewTemplateTitle').textContent = 'Pratinjau — ' + (id === '__aktif__' || !t ? 'Template Aktif' : t.nama);
+    el('previewTemplateReceipt').innerHTML = html;
+    el('modalPreviewTemplate').classList.add('show');
+  } catch (e) {
+    showToast('Gagal menampilkan pratinjau: ' + e.message, 'danger');
+  }
+}
+function closePreviewTemplateModal() {
+  el('modalPreviewTemplate').classList.remove('show');
 }
 // Satu fungsi pembangun payload Pengaturan dipakai oleh form Simpan maupun
 // aksi Galeri Template (simpan racikan baru), supaya Template_Library &
