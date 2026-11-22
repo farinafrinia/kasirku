@@ -136,6 +136,7 @@ async function bootApp() {
     applyBranding();
     renderPosTemplateSelect();
     renderKasirSection();
+    toggleUangTunai();
     navigateTo('kasir');
   } catch (e) { /* toast sudah tampil */ }
 }
@@ -265,9 +266,46 @@ function renderCart() {
         '</div>';
     }).join('');
   }
-  const total = appState.cart.reduce(function (s, c) { return s + c.Qty * c.Harga_Satuan; }, 0);
-  el('cartTotal').textContent = rupiah(total);
+  const t = hitungTotalEstimasi_();
+  el('cartSubtotal').textContent = rupiah(t.subtotal);
+  if (t.pajak > 0) {
+    el('cartPajakRow').style.display = '';
+    el('cartPajakLabel').textContent = 'Pajak (' + t.persen + '%)';
+    el('cartPajak').textContent = rupiah(t.pajak);
+  } else {
+    el('cartPajakRow').style.display = 'none';
+  }
+  el('cartTotal').textContent = rupiah(t.total);
   el('btnBayar').disabled = appState.cart.length === 0;
+  hitungKembalianTampilan();
+}
+// Estimasi subtotal/pajak/total di sisi Kasir — perhitungan final & mengikat tetap
+// di server saat checkout (mengikuti Pengaturan Pajak_Persen saat itu juga).
+function hitungTotalEstimasi_() {
+  const subtotal = appState.cart.reduce(function (s, c) { return s + c.Qty * c.Harga_Satuan; }, 0);
+  const persen = Number((appState.pengaturan && appState.pengaturan.Pajak_Persen) || 0);
+  const pajak = persen > 0 ? Math.round(subtotal * persen / 100) : 0;
+  return { subtotal: subtotal, persen: persen, pajak: pajak, total: subtotal + pajak };
+}
+function toggleUangTunai() {
+  const tunai = el('posMetode').value === 'Tunai';
+  el('blokUangTunai').style.display = tunai ? 'block' : 'none';
+  if (!tunai) { el('posUangDiterima').value = ''; el('posKembalianInfo').textContent = ''; }
+  else hitungKembalianTampilan();
+}
+function hitungKembalianTampilan() {
+  const info = el('posKembalianInfo');
+  if (!info || el('posMetode').value !== 'Tunai') return;
+  const diterima = Number(el('posUangDiterima').value || 0);
+  const total = hitungTotalEstimasi_().total;
+  if (!diterima) { info.textContent = 'Uang pas: ' + rupiah(total); info.style.color = 'var(--text-muted)'; return; }
+  if (diterima < total) {
+    info.textContent = '⚠️ Uang diterima kurang ' + rupiah(total - diterima);
+    info.style.color = '#dc2626';
+  } else {
+    info.textContent = 'Kembalian: ' + rupiah(diterima - total);
+    info.style.color = '#16a34a';
+  }
 }
 
 function clearCart() {
@@ -278,11 +316,16 @@ function clearCart() {
 
 async function handleCheckout() {
   if (!appState.cart.length) return;
+  const metodeBayar = el('posMetode').value;
+  const diterima = Number(el('posUangDiterima').value || 0);
+  if (metodeBayar === 'Tunai' && diterima > 0 && diterima < hitungTotalEstimasi_().total) {
+    showToast('Uang diterima kurang dari total belanja.', 'danger');
+    return;
+  }
   const btn = el('btnBayar');
   btn.disabled = true; btn.textContent = 'Memproses...';
   try {
-    const metodeBayar = el('posMetode').value;
-    const trx = await api('transaksi.checkout', { items: appState.cart, metodeBayar: metodeBayar });
+    const trx = await api('transaksi.checkout', { items: appState.cart, metodeBayar: metodeBayar, diterima: diterima || undefined });
     showToast('✅ Transaksi tersimpan: ' + trx.ID_Transaksi, 'success');
 
     // kurangi stok lokal secara optimistik agar grid langsung update
@@ -291,6 +334,8 @@ async function handleCheckout() {
       if (p) p.Stok = Number(p.Stok) - Number(it.Qty);
     });
     clearCart();
+    el('posUangDiterima').value = '';
+    hitungKembalianTampilan();
     renderProdukGrid(appState.produk);
 
     await Printer.cetakStruk(trx, tokoUntukCetak_());
@@ -410,7 +455,8 @@ async function cetakUlang(idTransaksi) {
   const trx = {
     ID_Transaksi: r.ID_Transaksi, Tanggal_Waktu: r.Tanggal_Waktu, Kasir: r.Kasir,
     Items: [{ Nama_Produk: 'Lihat Google Sheets Detail_Transaksi untuk rincian item', Qty: 1, Harga_Satuan: r.Total_Bayar }],
-    Subtotal: r.Subtotal, Diskon: r.Diskon, Total_Bayar: r.Total_Bayar, Metode_Bayar: r.Metode_Bayar
+    Subtotal: r.Subtotal, Diskon: r.Diskon, Pajak: r.Pajak, Total_Bayar: r.Total_Bayar, Metode_Bayar: r.Metode_Bayar,
+    Diterima: r.Diterima, Kembalian: r.Kembalian
   };
   await Printer.cetakStruk(trx, tokoUntukCetak_());
 }
@@ -450,6 +496,7 @@ function renderPengaturanForm() {
   el('stLogoUrl').value = p.Logo_URL || '';
   aturStatusLogo(p.Logo_URL || '');
   el('stFooter').value = p.Footer_Struk || '';
+  el('stPajakPersen').value = p.Pajak_Persen || '';
   el('stAwalanNomor').value = p.Awalan_Nomor_Struk || '';
   perbaruiContohNomorStruk();
   el('stKertas').value = localStorage.getItem('kasirku_kertas') || '58';
@@ -596,6 +643,7 @@ function bangunPengaturanPayload_() {
     No_Telepon: el('stTelepon').value.trim(),
     Logo_URL: el('stLogoUrl').value.trim(),
     Footer_Struk: el('stFooter').value.trim(),
+    Pajak_Persen: el('stPajakPersen').value.trim(),
     Awalan_Nomor_Struk: el('stAwalanNomor').value.trim().toUpperCase(),
     Template_Struk: el('stTemplate').value,
     Template_Blocks: JSON.stringify(appState.strukBlocks || []),
@@ -620,6 +668,7 @@ async function submitPengaturanForm(e) {
     appState.pengaturan = pengaturan;
     applyBranding();
     renderPosTemplateSelect();
+    renderCart();
     showToast('Pengaturan toko disimpan', 'success');
   } catch (e) { /* toast sudah tampil */ }
 }
@@ -762,6 +811,10 @@ function blokRowHtml_(b, i, total) {
   if (b.type === 'garis') {
     kontrol += selectHtml_('ubahBlokField(' + i + ",'jenis',this.value)", [['putus', 'Putus-putus'], ['tebal', 'Tebal']], b.jenis || 'putus');
   }
+  if (b.type === 'daftar_item') {
+    kontrol += '<label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" style="width:auto"' +
+      (b.headerKolom ? ' checked' : '') + ' onchange="ubahBlokField(' + i + ",'headerKolom',this.checked)\"> Tampilkan Judul Kolom</label>";
+  }
   if (b.type === 'info_transaksi') {
     kontrol += [['noStruk', 'No. Struk'], ['tanggal', 'Tanggal'], ['kasir', 'Kasir']].map(function (p) {
       return '<label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" style="width:auto"' +
@@ -769,7 +822,7 @@ function blokRowHtml_(b, i, total) {
     }).join('');
   }
   if (b.type === 'ringkasan_total') {
-    kontrol += [['metode', 'Tampilkan Metode Bayar'], ['totalBoxed', 'Sorot Baris TOTAL']].map(function (p) {
+    kontrol += [['metode', 'Tampilkan Metode Bayar'], ['bayarTunai', 'Tampilkan Tunai & Kembalian'], ['totalBoxed', 'Sorot Baris TOTAL']].map(function (p) {
       return '<label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" style="width:auto"' +
         (b[p[0]] ? ' checked' : '') + ' onchange="ubahBlokField(' + i + ",'" + p[0] + "',this.checked)\"> " + p[1] + '</label>';
     }).join('');
