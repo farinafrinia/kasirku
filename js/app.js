@@ -130,7 +130,11 @@ async function bootApp() {
     appState.produk = produk;
     appState.kategori = kategori;
     appState.pengaturan = pengaturan;
+    let libraryTersimpan = null;
+    try { libraryTersimpan = pengaturan.Template_Library ? JSON.parse(pengaturan.Template_Library) : null; } catch (e) { libraryTersimpan = null; }
+    appState._templateCustom = Array.isArray(libraryTersimpan) ? libraryTersimpan : [];
     applyBranding();
+    renderPosTemplateSelect();
     renderKasirSection();
     navigateTo('kasir');
   } catch (e) { /* toast sudah tampil */ }
@@ -289,7 +293,7 @@ async function handleCheckout() {
     clearCart();
     renderProdukGrid(appState.produk);
 
-    await Printer.cetakStruk(trx, appState.pengaturan);
+    await Printer.cetakStruk(trx, tokoUntukCetak_());
   } catch (e) { /* toast sudah tampil */ }
   finally { btn.disabled = false; btn.textContent = 'Bayar & Cetak Struk'; }
 }
@@ -408,7 +412,7 @@ async function cetakUlang(idTransaksi) {
     Items: [{ Nama_Produk: 'Lihat Google Sheets Detail_Transaksi untuk rincian item', Qty: 1, Harga_Satuan: r.Total_Bayar }],
     Subtotal: r.Subtotal, Diskon: r.Diskon, Total_Bayar: r.Total_Bayar, Metode_Bayar: r.Metode_Bayar
   };
-  await Printer.cetakStruk(trx, appState.pengaturan);
+  await Printer.cetakStruk(trx, tokoUntukCetak_());
 }
 
 async function voidTransaksi(idTransaksi) {
@@ -452,29 +456,139 @@ function renderPengaturanForm() {
   let blocksTersimpan = null;
   try { blocksTersimpan = p.Template_Blocks ? JSON.parse(p.Template_Blocks) : null; } catch (e) { blocksTersimpan = null; }
   appState.strukBlocks = Array.isArray(blocksTersimpan) && blocksTersimpan.length ? blocksTersimpan : Printer.blokDefault();
+  let libraryTersimpan = null;
+  try { libraryTersimpan = p.Template_Library ? JSON.parse(p.Template_Library) : null; } catch (e) { libraryTersimpan = null; }
+  appState._templateCustom = Array.isArray(libraryTersimpan) ? libraryTersimpan : [];
   // Pilih mode awal: bila template tersimpan persis sama dengan hasil susunan
   // blok tersimpan, buka Mode Mudah (aman, tetap sinkron). Bila sudah diedit
   // manual lebih rumit di Mode Lanjutan, buka Mode Lanjutan agar kode yang
   // sudah dibuat tidak diganti diam-diam oleh susunan blok lama.
   const cocok = el('stTemplate').value.trim() === Printer.blocksToTemplate(appState.strukBlocks).trim();
   pilihModeTemplate(cocok ? 'mudah' : 'lanjutan');
+  renderGaleriTemplate();
+  renderPosTemplateSelect();
 }
-async function submitPengaturanForm(e) {
-  e.preventDefault();
-  const pengaturan = {
+
+// ---- Galeri Template (9 preset siap pakai + template custom tersimpan) ----
+function renderGaleriTemplate() {
+  const box = el('galeriTemplate');
+  if (!box) return;
+  const semua = Printer.daftarLibrary(appState.pengaturan);
+  const grup = {};
+  semua.forEach(function (t) {
+    const kat = (appState._templateCustom || []).indexOf(t) > -1 ? 'custom' : (t.kategori || 'custom');
+    (grup[kat] = grup[kat] || []).push(t);
+  });
+  const urutanKategori = ['custom', 'cafe', 'toko', 'laundry'];
+  box.innerHTML = urutanKategori.filter(function (k) { return grup[k] && grup[k].length; }).map(function (kat) {
+    const judul = (Printer.labelKategori && Printer.labelKategori[kat]) || kat;
+    const kartu = grup[kat].map(function (t) {
+      const custom = kat === 'custom';
+      return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff">' +
+        '<span style="font-size:0.88rem">' + t.nama + '</span>' +
+        '<span style="display:flex;gap:6px">' +
+          '<button type="button" class="btn-sm" onclick="gunakanTemplateGaleri(\'' + t.id + '\')">Gunakan</button>' +
+          (custom ? '<button type="button" class="btn-sm btn-sm-outline" onclick="hapusTemplateCustom(\'' + t.id + '\')">Hapus</button>' : '') +
+        '</span></div>';
+    }).join('');
+    return '<div><p style="font-size:0.8rem;font-weight:600;color:var(--text-muted);margin:0 0 6px">' + judul + '</p>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' + kartu + '</div></div>';
+  }).join('');
+}
+function gunakanTemplateGaleri(id) {
+  const semua = Printer.daftarLibrary(appState.pengaturan);
+  const t = semua.find(function (x) { return x.id === id; });
+  if (!t) return;
+  appState.strukBlocks = JSON.parse(JSON.stringify(t.blocks));
+  renderStrukBlocks();
+  sinkronkanTemplateDariBlok();
+  pilihModeTemplate('mudah');
+  pratinjauStruk();
+  showToast('Template "' + t.nama + '" dimuat ke editor — klik Simpan Pengaturan untuk menyimpan sebagai tampilan aktif', 'success');
+}
+async function simpanTemplateKeLibrary() {
+  const nama = prompt('Nama untuk template ini (contoh: "Struk Toko Saya v2"):');
+  if (!nama || !nama.trim()) return;
+  const idBaru = 'custom_' + Date.now();
+  appState._templateCustom = appState._templateCustom || [];
+  appState._templateCustom.push({ id: idBaru, nama: nama.trim(), kategori: 'custom', blocks: JSON.parse(JSON.stringify(appState.strukBlocks || [])) });
+  const pengaturan = bangunPengaturanPayload_();
+  try {
+    await api('pengaturan.save', { pengaturan: pengaturan });
+    appState.pengaturan = pengaturan;
+    renderGaleriTemplate();
+    renderPosTemplateSelect();
+    showToast('Template "' + nama.trim() + '" tersimpan di galeri', 'success');
+  } catch (e) { /* toast sudah tampil */ }
+}
+async function hapusTemplateCustom(id) {
+  if (!confirm('Hapus template ini dari galeri?')) return;
+  appState._templateCustom = (appState._templateCustom || []).filter(function (t) { return t.id !== id; });
+  const pengaturan = bangunPengaturanPayload_();
+  try {
+    await api('pengaturan.save', { pengaturan: pengaturan });
+    appState.pengaturan = pengaturan;
+    renderGaleriTemplate();
+    renderPosTemplateSelect();
+    showToast('Template dihapus dari galeri', 'success');
+  } catch (e) { /* toast sudah tampil */ }
+}
+
+// ---- Dropdown pilih template sebelum cetak (Kasir & Cetak Ulang Riwayat) ----
+function renderPosTemplateSelect() {
+  const sel = el('posTemplate');
+  if (!sel) return;
+  const terakhir = localStorage.getItem('kasirku_template_pilihan') || '__aktif__';
+  const semua = Printer.daftarLibrary(appState.pengaturan);
+  const grup = {};
+  semua.forEach(function (t) {
+    const kat = (appState._templateCustom || []).indexOf(t) > -1 ? 'custom' : (t.kategori || 'custom');
+    (grup[kat] = grup[kat] || []).push(t);
+  });
+  const urutanKategori = ['custom', 'cafe', 'toko', 'laundry'];
+  let html = '<option value="__aktif__">⭐ Template Aktif (Pengaturan)</option>';
+  urutanKategori.forEach(function (kat) {
+    if (!grup[kat] || !grup[kat].length) return;
+    const judul = (Printer.labelKategori && Printer.labelKategori[kat]) || kat;
+    html += '<optgroup label="' + judul + '">' + grup[kat].map(function (t) {
+      return '<option value="' + t.id + '">' + t.nama + '</option>';
+    }).join('') + '</optgroup>';
+  });
+  sel.innerHTML = html;
+  sel.value = semua.some(function (t) { return t.id === terakhir; }) ? terakhir : '__aktif__';
+}
+function tokoUntukCetak_() {
+  const sel = el('posTemplate');
+  const idTerpilih = sel ? sel.value : '__aktif__';
+  if (sel) localStorage.setItem('kasirku_template_pilihan', idTerpilih);
+  return Object.assign({}, appState.pengaturan, { Template_Struk: Printer.templateUntukId(appState.pengaturan, idTerpilih) });
+}
+// Satu fungsi pembangun payload Pengaturan dipakai oleh form Simpan maupun
+// aksi Galeri Template (simpan racikan baru), supaya Template_Library &
+// Template_Aktif_Id tidak pernah tertimpa kosong secara tidak sengaja
+// (backend menulis '' untuk kolom yang tidak disertakan pada payload).
+function bangunPengaturanPayload_() {
+  return {
     Nama_Toko: el('stNamaToko').value.trim(),
     Alamat: el('stAlamat').value.trim(),
     No_Telepon: el('stTelepon').value.trim(),
     Logo_URL: el('stLogoUrl').value.trim(),
     Footer_Struk: el('stFooter').value.trim(),
     Template_Struk: el('stTemplate').value,
-    Template_Blocks: JSON.stringify(appState.strukBlocks || [])
+    Template_Blocks: JSON.stringify(appState.strukBlocks || []),
+    Template_Library: JSON.stringify(appState._templateCustom || []),
+    Template_Aktif_Id: appState.pengaturan.Template_Aktif_Id || ''
   };
+}
+async function submitPengaturanForm(e) {
+  e.preventDefault();
+  const pengaturan = bangunPengaturanPayload_();
   localStorage.setItem('kasirku_kertas', el('stKertas').value);
   try {
     await api('pengaturan.save', { pengaturan: pengaturan });
     appState.pengaturan = pengaturan;
     applyBranding();
+    renderPosTemplateSelect();
     showToast('Pengaturan toko disimpan', 'success');
   } catch (e) { /* toast sudah tampil */ }
 }
