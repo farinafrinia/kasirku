@@ -152,7 +152,7 @@ const Printer = (function () {
   function blokBaru(type) {
     const b = { type: type };
     if (type === 'judul_toko') { b.align = 'C'; b.bold = true; b.size = 'sangat_besar'; }
-    if (type === 'teks') { b.align = 'C'; b.bold = false; b.size = 'normal'; b.text = 'Tulis teks di sini'; }
+    if (type === 'teks') { b.align = 'C'; b.bold = false; b.size = 'normal'; b.boxed = false; b.text = 'Tulis teks di sini'; }
     if (type === 'footer') { b.align = 'C'; }
     if (type === 'garis') { b.jenis = 'putus'; }
     if (type === 'info_transaksi') { b.noStruk = true; b.tanggal = true; b.kasir = true; b.metode = true; }
@@ -175,10 +175,109 @@ const Printer = (function () {
       { type: 'qr' }
     ];
   }
+  // ---- 9 template siap pakai (3 Cafe/Resto, 3 Toko/Minimarket, 3 Laundry) ----
+  // Dibangun dari blok yang sama persis dipakai Struk Builder, supaya bisa
+  // langsung "dipakai" (load ke Builder) atau dipilih langsung saat cetak.
+  function templatePresetDefault() {
+    const T = function (text, opt) { return Object.assign({ type: 'teks', align: 'C', bold: false, size: 'normal', boxed: false, text: text }, opt || {}); };
+    const G = function (jenis) { return { type: 'garis', jenis: jenis }; };
+    const INFO = function (opt) { return Object.assign({ type: 'info_transaksi', noStruk: true, tanggal: true, kasir: true, metode: true }, opt || {}); };
+    const JUDUL = function (opt) { return Object.assign({ type: 'judul_toko', align: 'C', bold: true, size: 'sangat_besar', boxed: false }, opt || {}); };
+    const ALAMAT = { type: 'alamat_toko' }, TELP = { type: 'telepon_toko' }, LOGO = { type: 'logo' }, QR = { type: 'qr' }, ITEM = { type: 'daftar_item' };
+    const TOTAL = function (opt) { return Object.assign({ type: 'ringkasan_total', totalBoxed: false }, opt || {}); };
+    const FOOTER = function (opt) { return Object.assign({ type: 'footer', align: 'C' }, opt || {}); };
+
+    return [
+      // ---- CAFE / RESTO ----
+      {
+        id: 'cafe1', nama: 'Cafe Modern', kategori: 'cafe', blocks: [
+          LOGO, JUDUL(), ALAMAT, TELP, G('tebal'), INFO(), G('putus'), ITEM, G('putus'), TOTAL(), G('tebal'),
+          T('Semua pesanan tidak dapat dibatalkan setelah 15 menit.', { size: 'normal' }),
+          FOOTER(), QR
+        ]
+      },
+      {
+        id: 'cafe2', nama: 'Cafe Minimalis', kategori: 'cafe', blocks: [
+          JUDUL({ align: 'L', size: 'besar' }),
+          INFO({ noStruk: false, metode: false }),
+          G('putus'), ITEM, G('putus'), TOTAL(), FOOTER({ align: 'L' })
+        ]
+      },
+      {
+        id: 'cafe3', nama: 'Resto Elegan', kategori: 'cafe', blocks: [
+          LOGO, JUDUL(), ALAMAT, TELP, G('tebal'), INFO(), G('putus'), ITEM, G('putus'),
+          TOTAL({ totalBoxed: true }), G('tebal'),
+          T('Terima kasih telah berkunjung, sampai jumpa lagi!'),
+          FOOTER(), QR
+        ]
+      },
+      // ---- TOKO SEMBAKO / MINIMARKET ----
+      {
+        id: 'toko1', nama: 'Minimarket Ringkas', kategori: 'toko', blocks: [
+          JUDUL({ size: 'besar' }), G('putus'), INFO({ kasir: false, metode: false }), G('putus'), ITEM, G('putus'), TOTAL(),
+          T('Barang yang sudah dibeli tidak dapat dikembalikan.', { size: 'normal' })
+        ]
+      },
+      {
+        id: 'toko2', nama: 'Toko Sembako Lengkap', kategori: 'toko', blocks: [
+          LOGO, JUDUL(), ALAMAT, TELP, G('tebal'), INFO(), G('putus'), ITEM, G('putus'), TOTAL(), G('tebal'), FOOTER(), QR
+        ]
+      },
+      {
+        id: 'toko3', nama: 'Mini Market Promo', kategori: 'toko', blocks: [
+          JUDUL(), T('~ PROMO HARI INI ~', { bold: true, boxed: true }), ALAMAT, G('putus'), INFO(), G('putus'), ITEM, G('putus'), TOTAL(), G('tebal'),
+          T('Follow IG kami untuk info promo terbaru!'),
+          FOOTER(), QR
+        ]
+      },
+      // ---- LAUNDRY ----
+      {
+        id: 'laundry1', nama: 'Laundry Simpel', kategori: 'laundry', blocks: [
+          JUDUL({ size: 'besar' }), ALAMAT, TELP, G('putus'), INFO({ metode: false }),
+          G('putus'), ITEM, G('putus'), TOTAL(),
+          T('Estimasi selesai: 2-3 hari kerja', { size: 'normal' }),
+          FOOTER()
+        ]
+      },
+      {
+        id: 'laundry2', nama: 'Laundry Express', kategori: 'laundry', blocks: [
+          LOGO, JUDUL(),
+          T('⚡ LAYANAN EXPRESS 6 JAM ⚡', { bold: true, boxed: true }),
+          G('tebal'), INFO(), G('putus'), ITEM, G('putus'), TOTAL({ totalBoxed: true }), G('tebal'), FOOTER(), QR
+        ]
+      },
+      {
+        id: 'laundry3', nama: 'Laundry Lengkap (+ Nota Pengambilan)', kategori: 'laundry', blocks: [
+          LOGO, JUDUL(), ALAMAT, TELP, G('tebal'), INFO(), G('putus'), ITEM, G('putus'), TOTAL(), G('putus'),
+          T('Harap simpan struk ini sebagai bukti pengambilan.', { bold: true }),
+          T('Cucian hilang akibat struk tidak dibawa bukan tanggung jawab kami.', { size: 'normal' }),
+          FOOTER(), QR
+        ]
+      }
+    ];
+  }
+  const LABEL_KATEGORI = { custom: 'Template Saya', cafe: 'Cafe / Resto', toko: 'Toko / Minimarket', laundry: 'Laundry' };
+  // Gabungkan: template tersimpan milik toko (JSON dari Pengaturan) + 9 preset bawaan.
+  function daftarLibrary(pengaturan) {
+    let simpanan = [];
+    try { simpanan = JSON.parse((pengaturan && pengaturan.Template_Library) || '[]'); } catch (e) { simpanan = []; }
+    if (!Array.isArray(simpanan)) simpanan = [];
+    return simpanan.concat(templatePresetDefault());
+  }
+  // Ambil teks template siap-cetak untuk satu id pilihan. '__aktif__' = pakai
+  // Template_Struk yang sedang dikonfigurasi di Pengaturan (default/lama).
+  function templateUntukId(pengaturan, id) {
+    if (!id || id === '__aktif__') return pengaturan.Template_Struk || TEMPLATE_DEFAULT;
+    const semua = daftarLibrary(pengaturan);
+    const found = semua.find(function (t) { return t.id === id; });
+    return found ? blocksToTemplate(found.blocks) : (pengaturan.Template_Struk || TEMPLATE_DEFAULT);
+  }
+
   function tagGaya_(b) {
     let t = (b.align === 'C' ? '[C]' : b.align === 'R' ? '[R]' : b.align === 'L' ? '[L]' : '');
     if (b.bold) t += '[B]';
     if (b.size === 'besar') t += '[H]'; else if (b.size === 'sangat_besar') t += '[2]';
+    if (b.boxed) t += '[BOX]';
     return t;
   }
   function blokKeBaris_(b) {
@@ -199,7 +298,7 @@ const Printer = (function () {
         return baris;
       }
       case 'daftar_item': return ['{{#ITEM}}', '{{NAMA}}', '[LR]{{QTY}} x {{HARGA|rp}}||{{SUB|rp}}', '{{/ITEM}}'];
-      case 'ringkasan_total': return ['[LR]Subtotal||{{SUBTOTAL|rp}}', '{{?DISKON}}[LR]Diskon||-{{DISKON|rp}}', '{{/DISKON}}[B][H][LR]TOTAL||{{TOTAL|rp}}'];
+      case 'ringkasan_total': return ['[LR]Subtotal||{{SUBTOTAL|rp}}', '{{?DISKON}}[LR]Diskon||-{{DISKON|rp}}', '{{/DISKON}}[B][H]' + (b.totalBoxed ? '[BOX]' : '') + '[LR]TOTAL||{{TOTAL|rp}}'];
       case 'footer': return [(b.align === 'L' ? '[L]' : b.align === 'R' ? '[R]' : '[C]') + '{{FOOTER}}'];
       case 'qr': return ['[C][QR]'];
       default: return [];
@@ -332,7 +431,7 @@ const Printer = (function () {
       else if (tag === 'QR') return { type: 'qr', data: rest.trim() };
       else if (tag === 'LR') {
         const parts = rest.split('||');
-        return { type: 'lr', left: parts[0] || '', right: parts[1] || '', bold: bold, big: big, tall: tall };
+        return { type: 'lr', left: parts[0] || '', right: parts[1] || '', bold: bold, big: big, tall: tall, boxed: boxed };
       }
       // tag tak dikenal (mis. [BAR] belum didukung) — abaikan, lanjut cetak sisa teks apa adanya
     }
@@ -370,6 +469,7 @@ const Printer = (function () {
         const Wlr = row.big ? Math.max(1, Math.floor(W / 2)) : W;
         const avail = Math.max(1, Wlr - kanan.length - 1);
         if (row.bold) b = b.concat(cmdBold(true));
+        if (row.boxed) b = b.concat(cmdReverse(true));
         if (row.big || row.tall) b = b.concat(cmdSize(row.big ? 1 : 0, (row.big || row.tall) ? 1 : 0));
         if (row.left.length <= avail) {
           const spasi = Math.max(1, Wlr - row.left.length - kanan.length);
@@ -380,6 +480,7 @@ const Printer = (function () {
           b = b.concat(textToBytes(' '.repeat(spasi) + kanan + '\n'));
         }
         if (row.big || row.tall) b = b.concat(cmdSize(0, 0));
+        if (row.boxed) b = b.concat(cmdReverse(false));
         if (row.bold) b = b.concat(cmdBold(false));
       } else if (row.type === 'text') {
         b = b.concat(cmdAlign(alignCode[row.align] || 0));
@@ -434,7 +535,8 @@ const Printer = (function () {
       } else if (row.type === 'qr') {
         html += '<div style="text-align:center;margin:6px 0;font-size:0.72em;color:#666">[QR: ' + esc(row.data || 'ringkasan transaksi') + ']</div>';
       } else if (row.type === 'lr') {
-        const styleLr = (row.bold ? 'font-weight:bold;' : '') + ((row.big || row.tall) ? 'font-size:1.3em;' : '');
+        const styleLr = (row.bold ? 'font-weight:bold;' : '') + ((row.big || row.tall) ? 'font-size:1.3em;' : '') +
+          (row.boxed ? 'background:#000;color:#fff;padding:2px 4px;' : '');
         html += '<div style="display:flex;justify-content:space-between;gap:8px;' + styleLr + '"><span>' + esc(row.left) + '</span><span>' + esc(row.right) + '</span></div>';
       } else if (row.type === 'text') {
         const style = 'text-align:' + alignCss[row.align] + ';' +
@@ -499,6 +601,8 @@ const Printer = (function () {
     renderPreviewHtml, contohTrx,
     blocksToTemplate, blokBaru, blokDefault, labelBlok: LABEL_BLOK,
     templateDefault: TEMPLATE_DEFAULT,
-    panduanTemplate: PANDUAN_TEMPLATE
+    panduanTemplate: PANDUAN_TEMPLATE,
+    templatePresetDefault, labelKategori: LABEL_KATEGORI,
+    daftarLibrary, templateUntukId
   };
 })();
