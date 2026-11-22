@@ -450,6 +450,8 @@ function renderPengaturanForm() {
   el('stLogoUrl').value = p.Logo_URL || '';
   aturStatusLogo(p.Logo_URL || '');
   el('stFooter').value = p.Footer_Struk || '';
+  el('stAwalanNomor').value = p.Awalan_Nomor_Struk || '';
+  perbaruiContohNomorStruk();
   el('stKertas').value = localStorage.getItem('kasirku_kertas') || '58';
   el('stTemplate').value = p.Template_Struk || Printer.templateDefault;
   renderPanduanTemplate();
@@ -594,11 +596,20 @@ function bangunPengaturanPayload_() {
     No_Telepon: el('stTelepon').value.trim(),
     Logo_URL: el('stLogoUrl').value.trim(),
     Footer_Struk: el('stFooter').value.trim(),
+    Awalan_Nomor_Struk: el('stAwalanNomor').value.trim().toUpperCase(),
     Template_Struk: el('stTemplate').value,
     Template_Blocks: JSON.stringify(appState.strukBlocks || []),
     Template_Library: JSON.stringify(appState._templateCustom || []),
     Template_Aktif_Id: appState.pengaturan.Template_Aktif_Id || ''
   };
+}
+function perbaruiContohNomorStruk() {
+  const awalan = (el('stAwalanNomor').value || 'TRX').trim().toUpperCase() || 'TRX';
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  el('contohNomorStruk').textContent = awalan + yy + mm + dd + '-0001';
 }
 async function submitPengaturanForm(e) {
   e.preventDefault();
@@ -752,7 +763,13 @@ function blokRowHtml_(b, i, total) {
     kontrol += selectHtml_('ubahBlokField(' + i + ",'jenis',this.value)", [['putus', 'Putus-putus'], ['tebal', 'Tebal']], b.jenis || 'putus');
   }
   if (b.type === 'info_transaksi') {
-    kontrol += [['noStruk', 'No. Struk'], ['tanggal', 'Tanggal'], ['kasir', 'Kasir'], ['metode', 'Metode Bayar']].map(function (p) {
+    kontrol += [['noStruk', 'No. Struk'], ['tanggal', 'Tanggal'], ['kasir', 'Kasir']].map(function (p) {
+      return '<label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" style="width:auto"' +
+        (b[p[0]] ? ' checked' : '') + ' onchange="ubahBlokField(' + i + ",'" + p[0] + "',this.checked)\"> " + p[1] + '</label>';
+    }).join('');
+  }
+  if (b.type === 'ringkasan_total') {
+    kontrol += [['metode', 'Tampilkan Metode Bayar'], ['totalBoxed', 'Sorot Baris TOTAL']].map(function (p) {
       return '<label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" style="width:auto"' +
         (b[p[0]] ? ' checked' : '') + ' onchange="ubahBlokField(' + i + ",'" + p[0] + "',this.checked)\"> " + p[1] + '</label>';
     }).join('');
@@ -869,6 +886,7 @@ document.addEventListener('DOMContentLoaded', function () {
   el('pengaturanForm').addEventListener('submit', submitPengaturanForm);
   el('akunForm').addEventListener('submit', submitAkunForm);
   el('stLogoFile').addEventListener('change', handleLogoFile);
+  el('stAwalanNomor').addEventListener('input', perbaruiContohNomorStruk);
 
   // Pratinjau struk live (debounced) saat template/field toko diubah
   let _previewTimer = null;
