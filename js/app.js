@@ -435,7 +435,7 @@ function renderRiwayatTable(list) {
     const batal = r.Status === 'Dibatalkan';
     return '<tr>' +
       '<td>' + r.ID_Transaksi + '</td>' +
-      '<td>' + new Date(r.Tanggal_Waktu).toLocaleString('id-ID') + '</td>' +
+      '<td>' + new Date(r.Tanggal_Waktu).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) + '</td>' +
       '<td>' + r.Kasir + '</td>' +
       '<td>' + (r.Metode_Bayar || '-') + '</td>' +
       '<td>' + rupiah(r.Total_Bayar) + '</td>' +
@@ -653,11 +653,11 @@ function bangunPengaturanPayload_() {
 }
 function perbaruiContohNomorStruk() {
   const awalan = (el('stAwalanNomor').value || 'TRX').trim().toUpperCase() || 'TRX';
-  const now = new Date();
-  const yy = String(now.getFullYear()).slice(-2);
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  el('contohNomorStruk').textContent = awalan + yy + mm + dd + '-0001';
+  // Dibaca pakai komponen tanggal WIB (bukan jam perangkat), supaya contoh yang ditampilkan
+  // sama persis dengan nomor struk yang benar-benar dibuat server (selalu WIB).
+  const bagian = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: '2-digit' }).formatToParts(new Date());
+  const ambil = function (tipe) { const p = bagian.find(function (x) { return x.type === tipe; }); return p ? p.value : '00'; };
+  el('contohNomorStruk').textContent = awalan + ambil('year') + ambil('month') + ambil('day') + '-0001';
 }
 async function submitPengaturanForm(e) {
   e.preventDefault();
