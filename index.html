@@ -81,11 +81,19 @@
                 <input type="number" id="posUangDiterima" min="0" placeholder="0" oninput="hitungKembalianTampilan()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px">
                 <p id="posKembalianInfo" style="font-size:0.82rem;margin:6px 0 0;color:var(--text-muted)"></p>
               </div>
+              <div style="margin-bottom:10px;display:flex;gap:8px">
+                <div style="flex:1">
+                  <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">Tanggal Transaksi (opsional)</label>
+                  <input type="date" id="posTanggalManual" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px">
+                </div>
+                <div style="flex:1">
+                  <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">Jam Transaksi (opsional)</label>
+                  <input type="time" id="posJamManual" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px">
+                </div>
+              </div>
               <div style="margin-bottom:10px">
-                <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">Tanggal Transaksi (opsional)</label>
-                <input type="date" id="posTanggalManual" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px">
-                <p style="font-size:0.75rem;color:var(--text-muted);margin:4px 0 0">
-                  Kosongkan untuk pakai tanggal & jam sekarang otomatis. Isi hanya kalau mencatat penjualan yang telat diinput (tidak bisa pilih tanggal yang belum terjadi).
+                <p style="font-size:0.75rem;color:var(--text-muted);margin:0">
+                  Kosongkan untuk pakai tanggal & jam sekarang otomatis. Isi hanya kalau mencatat penjualan yang telat diinput — bisa isi salah satu atau keduanya. Tidak bisa dibuat menjadi waktu di masa depan: kalau tanggal & jam yang dipilih ternyata belum terjadi, sistem otomatis memakai waktu sekarang.
                 </p>
               </div>
               <div style="margin-bottom:10px">
