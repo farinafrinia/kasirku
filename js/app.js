@@ -813,7 +813,8 @@ function blokRowHtml_(b, i, total) {
   }
   if (b.type === 'daftar_item') {
     kontrol += '<label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" style="width:auto"' +
-      (b.headerKolom ? ' checked' : '') + ' onchange="ubahBlokField(' + i + ",'headerKolom',this.checked)\"> Tampilkan Judul Kolom</label>";
+      (b.headerKolom ? ' checked' : '') + ' onchange="ubahBlokField(' + i + ",'headerKolom',this.checked)\"> Tampilkan Judul Kolom</label>" +
+      selectHtml_('ubahBlokField(' + i + ",'gayaBaris',this.value)", [['standar', 'Gaya Standar (2 baris: nama, lalu qty x harga)'], ['ringkas', 'Gaya Ringkas (1 baris: qty+nama || subtotal)']], b.gayaBaris || 'standar');
   }
   if (b.type === 'info_transaksi') {
     kontrol += [['noStruk', 'No. Struk'], ['tanggal', 'Tanggal'], ['kasir', 'Kasir']].map(function (p) {
@@ -825,7 +826,7 @@ function blokRowHtml_(b, i, total) {
     kontrol += [['metode', 'Tampilkan Metode Bayar'], ['bayarTunai', 'Tampilkan Tunai & Kembalian'], ['totalBoxed', 'Sorot Baris TOTAL']].map(function (p) {
       return '<label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" style="width:auto"' +
         (b[p[0]] ? ' checked' : '') + ' onchange="ubahBlokField(' + i + ",'" + p[0] + "',this.checked)\"> " + p[1] + '</label>';
-    }).join('');
+    }).join('') + (b.metode ? selectHtml_('ubahBlokField(' + i + ",'gayaMetode',this.value)", [['label', 'Gaya "Metode Bayar: Tunai"'], ['kanal', 'Gaya "Qris / Cash — Rp xxx" (nominal diulang)']], b.gayaMetode || 'label') : '');
   }
   const teksField = b.type === 'teks'
     ? '<input type="text" value="' + escAttr_(b.text) + '" oninput="ubahBlokTeks(' + i + ',this.value)" ' +
