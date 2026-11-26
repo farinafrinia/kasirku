@@ -82,6 +82,13 @@
                 <p id="posKembalianInfo" style="font-size:0.82rem;margin:6px 0 0;color:var(--text-muted)"></p>
               </div>
               <div style="margin-bottom:10px">
+                <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">Tanggal Transaksi (opsional)</label>
+                <input type="date" id="posTanggalManual" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px">
+                <p style="font-size:0.75rem;color:var(--text-muted);margin:4px 0 0">
+                  Kosongkan untuk pakai tanggal & jam sekarang otomatis. Isi hanya kalau mencatat penjualan yang telat diinput (tidak bisa pilih tanggal yang belum terjadi).
+                </p>
+              </div>
+              <div style="margin-bottom:10px">
                 <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">Model Struk</label>
                 <div style="display:flex;gap:6px">
                   <select id="posTemplate" onchange="tampilkanPratinjauTemplate(this.value)" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px"></select>
