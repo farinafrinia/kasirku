@@ -330,7 +330,8 @@ async function handleCheckout() {
   btn.disabled = true; btn.textContent = 'Memproses...';
   try {
     const tanggalManual = el('posTanggalManual').value || undefined;
-    const trx = await api('transaksi.checkout', { items: appState.cart, metodeBayar: metodeBayar, diterima: diterima || undefined, tanggalManual: tanggalManual });
+    const jamManual = el('posJamManual').value || undefined;
+    const trx = await api('transaksi.checkout', { items: appState.cart, metodeBayar: metodeBayar, diterima: diterima || undefined, tanggalManual: tanggalManual, jamManual: jamManual });
     showToast('✅ Transaksi tersimpan: ' + trx.ID_Transaksi, 'success');
 
     // kurangi stok lokal secara optimistik agar grid langsung update
@@ -341,6 +342,7 @@ async function handleCheckout() {
     clearCart();
     el('posUangDiterima').value = '';
     el('posTanggalManual').value = '';
+    el('posJamManual').value = '';
     hitungKembalianTampilan();
     renderProdukGrid(appState.produk);
 
