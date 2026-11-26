@@ -137,6 +137,7 @@ async function bootApp() {
     renderPosTemplateSelect();
     renderKasirSection();
     toggleUangTunai();
+    toggleCatatanTambahan();
     navigateTo('kasir');
   } catch (e) { /* toast sudah tampil */ }
 }
@@ -230,7 +231,7 @@ function addToCart(idProduk) {
   if (stokTersisa <= 0) { showToast('Stok ' + p.Nama_Produk + ' habis', 'warning'); return; }
 
   if (existing) existing.Qty += 1;
-  else appState.cart.push({ ID_Produk: p.ID_Produk, Nama_Produk: p.Nama_Produk, Qty: 1, Harga_Satuan: Number(p.Harga_Jual) });
+  else appState.cart.push({ ID_Produk: p.ID_Produk, Nama_Produk: p.Nama_Produk, Qty: 1, Harga_Satuan: Number(p.Harga_Jual), Satuan: p.Satuan || 'pcs' });
 
   saveCartToStorage();
   renderCart();
@@ -297,6 +298,21 @@ function toggleUangTunai() {
   const inputTgl = el('posTanggalManual');
   if (inputTgl && !inputTgl.max) inputTgl.max = new Date().toISOString().slice(0, 10);
 }
+// Kolom "Catatan Tambahan 1 & 2" hanya muncul di Kasir kalau labelnya sudah diisi
+// pemilik di Pengaturan (mis. "Parfum"/"Catatan" untuk laundry) — toko lain yang
+// tidak butuh tetap bersih tanpa kolom ini.
+function toggleCatatanTambahan() {
+  const p = appState.pengaturan || {};
+  const label1 = (p.Label_Catatan1 || '').trim();
+  const label2 = (p.Label_Catatan2 || '').trim();
+  const blok = el('blokCatatanTambahan');
+  if (!blok) return;
+  blok.style.display = (label1 || label2) ? 'flex' : 'none';
+  el('labelPosCatatan1').textContent = label1 || 'Catatan 1';
+  el('labelPosCatatan2').textContent = label2 || 'Catatan 2';
+  el('labelPosCatatan1').parentElement.style.display = label1 ? 'block' : 'none';
+  el('labelPosCatatan2').parentElement.style.display = label2 ? 'block' : 'none';
+}
 function hitungKembalianTampilan() {
   const info = el('posKembalianInfo');
   if (!info || el('posMetode').value !== 'Tunai') return;
@@ -331,7 +347,14 @@ async function handleCheckout() {
   try {
     const tanggalManual = el('posTanggalManual').value || undefined;
     const jamManual = el('posJamManual').value || undefined;
-    const trx = await api('transaksi.checkout', { items: appState.cart, metodeBayar: metodeBayar, diterima: diterima || undefined, tanggalManual: tanggalManual, jamManual: jamManual });
+    const pelanggan = el('posPelanggan').value.trim() || undefined;
+    const catatan1 = el('posCatatan1').value.trim() || undefined;
+    const catatan2 = el('posCatatan2').value.trim() || undefined;
+    const trx = await api('transaksi.checkout', {
+      items: appState.cart, metodeBayar: metodeBayar, diterima: diterima || undefined,
+      tanggalManual: tanggalManual, jamManual: jamManual,
+      pelanggan: pelanggan, catatan1: catatan1, catatan2: catatan2
+    });
     showToast('✅ Transaksi tersimpan: ' + trx.ID_Transaksi, 'success');
 
     // kurangi stok lokal secara optimistik agar grid langsung update
@@ -343,6 +366,9 @@ async function handleCheckout() {
     el('posUangDiterima').value = '';
     el('posTanggalManual').value = '';
     el('posJamManual').value = '';
+    el('posPelanggan').value = '';
+    el('posCatatan1').value = '';
+    el('posCatatan2').value = '';
     hitungKembalianTampilan();
     renderProdukGrid(appState.produk);
 
@@ -464,7 +490,8 @@ async function cetakUlang(idTransaksi) {
     ID_Transaksi: r.ID_Transaksi, Tanggal_Waktu: r.Tanggal_Waktu, Kasir: r.Kasir,
     Items: [{ Nama_Produk: 'Lihat Google Sheets Detail_Transaksi untuk rincian item', Qty: 1, Harga_Satuan: r.Total_Bayar }],
     Subtotal: r.Subtotal, Diskon: r.Diskon, Pajak: r.Pajak, Total_Bayar: r.Total_Bayar, Metode_Bayar: r.Metode_Bayar,
-    Diterima: r.Diterima, Kembalian: r.Kembalian
+    Diterima: r.Diterima, Kembalian: r.Kembalian,
+    Pelanggan: r.Pelanggan, Estimasi_Selesai: r.Estimasi_Selesai, Catatan1: r.Catatan1, Catatan2: r.Catatan2
   };
   await Printer.cetakStruk(trx, tokoUntukCetak_());
 }
@@ -506,6 +533,9 @@ function renderPengaturanForm() {
   el('stFooter').value = p.Footer_Struk || '';
   el('stPajakPersen').value = p.Pajak_Persen || '';
   el('stAwalanNomor').value = p.Awalan_Nomor_Struk || '';
+  el('stEstimasiJam').value = p.Estimasi_Selesai_Jam || '';
+  el('stLabelCatatan1').value = p.Label_Catatan1 || '';
+  el('stLabelCatatan2').value = p.Label_Catatan2 || '';
   perbaruiContohNomorStruk();
   el('stKertas').value = localStorage.getItem('kasirku_kertas') || '58';
   el('stTemplate').value = p.Template_Struk || Printer.templateDefault;
@@ -653,6 +683,9 @@ function bangunPengaturanPayload_() {
     Footer_Struk: el('stFooter').value.trim(),
     Pajak_Persen: el('stPajakPersen').value.trim(),
     Awalan_Nomor_Struk: el('stAwalanNomor').value.trim().toUpperCase(),
+    Estimasi_Selesai_Jam: el('stEstimasiJam').value.trim(),
+    Label_Catatan1: el('stLabelCatatan1').value.trim(),
+    Label_Catatan2: el('stLabelCatatan2').value.trim(),
     Template_Struk: el('stTemplate').value,
     Template_Blocks: JSON.stringify(appState.strukBlocks || []),
     Template_Library: JSON.stringify(appState._templateCustom || []),
@@ -677,6 +710,7 @@ async function submitPengaturanForm(e) {
     applyBranding();
     renderPosTemplateSelect();
     renderCart();
+    toggleCatatanTambahan();
     showToast('Pengaturan toko disimpan', 'success');
   } catch (e) { /* toast sudah tampil */ }
 }
@@ -822,7 +856,7 @@ function blokRowHtml_(b, i, total) {
   if (b.type === 'daftar_item') {
     kontrol += '<label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" style="width:auto"' +
       (b.headerKolom ? ' checked' : '') + ' onchange="ubahBlokField(' + i + ",'headerKolom',this.checked)\"> Tampilkan Judul Kolom</label>" +
-      selectHtml_('ubahBlokField(' + i + ",'gayaBaris',this.value)", [['standar', 'Gaya Standar (2 baris: nama, lalu qty x harga)'], ['ringkas', 'Gaya Ringkas (1 baris: qty+nama || subtotal)']], b.gayaBaris || 'standar');
+      selectHtml_('ubahBlokField(' + i + ",'gayaBaris',this.value)", [['standar', 'Gaya Standar (2 baris: nama, lalu qty x harga)'], ['ringkas', 'Gaya Ringkas (1 baris: qty+nama || subtotal)'], ['satuan', 'Gaya Satuan (nama di tengah, lalu qty+satuan X harga, mis. "3.5 Kg X 30.000")']], b.gayaBaris || 'standar');
   }
   if (b.type === 'info_transaksi') {
     kontrol += [['noStruk', 'No. Struk'], ['tanggal', 'Tanggal'], ['kasir', 'Kasir']].map(function (p) {
