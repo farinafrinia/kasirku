@@ -292,6 +292,10 @@ function toggleUangTunai() {
   el('blokUangTunai').style.display = tunai ? 'block' : 'none';
   if (!tunai) { el('posUangDiterima').value = ''; el('posKembalianInfo').textContent = ''; }
   else hitungKembalianTampilan();
+  // Batas atas kalender "Tanggal Transaksi" — sekadar bantuan UI (bisa saja meleset
+  // kalau jam perangkat salah); batas yang sebenarnya tetap ditegakkan di server.
+  const inputTgl = el('posTanggalManual');
+  if (inputTgl && !inputTgl.max) inputTgl.max = new Date().toISOString().slice(0, 10);
 }
 function hitungKembalianTampilan() {
   const info = el('posKembalianInfo');
@@ -325,7 +329,8 @@ async function handleCheckout() {
   const btn = el('btnBayar');
   btn.disabled = true; btn.textContent = 'Memproses...';
   try {
-    const trx = await api('transaksi.checkout', { items: appState.cart, metodeBayar: metodeBayar, diterima: diterima || undefined });
+    const tanggalManual = el('posTanggalManual').value || undefined;
+    const trx = await api('transaksi.checkout', { items: appState.cart, metodeBayar: metodeBayar, diterima: diterima || undefined, tanggalManual: tanggalManual });
     showToast('✅ Transaksi tersimpan: ' + trx.ID_Transaksi, 'success');
 
     // kurangi stok lokal secara optimistik agar grid langsung update
@@ -335,6 +340,7 @@ async function handleCheckout() {
     });
     clearCart();
     el('posUangDiterima').value = '';
+    el('posTanggalManual').value = '';
     hitungKembalianTampilan();
     renderProdukGrid(appState.produk);
 
