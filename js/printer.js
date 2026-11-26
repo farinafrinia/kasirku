@@ -304,6 +304,35 @@ const Printer = (function () {
           T('Cucian hilang akibat struk tidak dibawa bukan tanggung jawab kami.', { size: 'normal' }),
           FOOTER(), QR
         ]
+      },
+      // Meniru tata letak struk nyata yang dikirim pengguna (struk laundry bergaya
+      // tracking pesanan): QR di paling atas, Order ID/Pelanggan/Kasir/Tgl Pesan/Est
+      // Selesai berpasangan kiri-kanan, item per-kiloan (qty+satuan X harga), lalu
+      // Total Harga/Dibayar/Kembalian tanpa penyorotan, ditutup info jumlah item +
+      // 2 baris catatan bebas (mis. Parfum/Catatan — label diatur di Pengaturan).
+      {
+        id: 'laundry4', nama: 'Laundry Tracking (QR Atas + Estimasi Selesai)', kategori: 'laundry', blocks: [
+          QR, LOGO, JUDUL({ size: 'besar' }), ALAMAT,
+          T('{{?TOKO_WA}}Tlp/WA {{TOKO_WA}}{{/TOKO_WA}}', { align: '' }),
+          G('putus'),
+          T('[LR]Order ID||{{NOTA}}', { align: '' }),
+          T('{{?PELANGGAN}}[LR]Pelanggan||{{PELANGGAN}}{{/PELANGGAN}}', { align: '' }),
+          T('[LR]Kasir||{{KASIR}}', { align: '' }),
+          T('[LR]Tgl Pesan||{{TGL_PESAN}}', { align: '' }),
+          T('{{?ESTIMASI}}[LR]Est Selesai||{{ESTIMASI}}{{/ESTIMASI}}', { align: '' }),
+          G('putus'),
+          { type: 'daftar_item', gayaBaris: 'satuan' },
+          G('putus'),
+          T('[LR]Total Harga||{{TOTAL|angka}}', { align: '' }),
+          T('{{?TUNAI}}[LR]Dibayar||{{DITERIMA|angka}}{{/TUNAI}}', { align: '' }),
+          T('{{?TUNAI}}[LR]Kembalian||{{KEMBALI|angka}}{{/TUNAI}}', { align: '' }),
+          { type: 'spasi' },
+          T('[LR]Item||{{TOTAL_ITEM}} Item', { align: '' }),
+          T('{{?CATATAN1}}[LR]{{LABEL_CATATAN1}}||{{CATATAN1}}{{/CATATAN1}}', { align: '' }),
+          T('{{?CATATAN2}}[LR]{{LABEL_CATATAN2}}||{{CATATAN2}}{{/CATATAN2}}', { align: '' }),
+          { type: 'spasi' },
+          FOOTER()
+        ]
       }
     ];
   }
@@ -355,6 +384,10 @@ const Printer = (function () {
           // Satu baris per item: qty menyatu di depan nama (kiri), subtotal di kanan tanpa "Rp" —
           // meniru gaya struk kasir POS modern (mis. Olsera, Moka, dll).
           baris.push('[LR]{{QTY}} {{NAMA}}||{{SUB|angka}}');
+        } else if (b.gayaBaris === 'satuan') {
+          // Nama item di tengah, lalu qty+satuan X harga (tanpa "Rp", angka apa adanya) —
+          // meniru struk jasa per-satuan seperti laundry kiloan ("3.5 Kg X 30.000").
+          baris.push('[C]{{NAMA}}', '[LR]{{QTY}} {{SATUAN}} X {{HARGA|angka}}||{{SUB|angka}}');
         } else {
           baris.push('{{NAMA}}', '[LR]{{QTY}} x {{HARGA|rp}}||{{SUB|rp}}');
         }
@@ -429,7 +462,7 @@ const Printer = (function () {
       KASIR: trx.Kasir || '-',
       METODE: trx.Metode_Bayar || 'Tunai',
       ITEM: (trx.Items || []).map(function (it) {
-        return { NAMA: it.Nama_Produk, QTY: it.Qty, HARGA: it.Harga_Satuan, SUB: it.Qty * it.Harga_Satuan };
+        return { NAMA: it.Nama_Produk, QTY: it.Qty, SATUAN: it.Satuan || 'pcs', HARGA: it.Harga_Satuan, SUB: it.Qty * it.Harga_Satuan };
       }),
       SUBTOTAL: trx.Subtotal || 0,
       DISKON: trx.Diskon || 0,
@@ -438,7 +471,17 @@ const Printer = (function () {
       TUNAI: (trx.Metode_Bayar || 'Tunai') === 'Tunai',
       DITERIMA: trx.Diterima !== undefined ? trx.Diterima : (trx.Total_Bayar || 0),
       KEMBALI: trx.Kembalian || 0,
-      FOOTER: toko.Footer_Struk || 'Terima kasih atas kunjungan Anda'
+      FOOTER: toko.Footer_Struk || 'Terima kasih atas kunjungan Anda',
+      // Info tambahan opsional (berguna untuk bisnis jasa seperti laundry, tapi
+      // generik — bisa dipakai bisnis apa saja lewat label yang diatur di Pengaturan).
+      PELANGGAN: trx.Pelanggan || '',
+      TGL_PESAN: formatTglJamRingkas_(trx.Tanggal_Waktu),
+      ESTIMASI: trx.Estimasi_Selesai || '',
+      CATATAN1: trx.Catatan1 || '',
+      CATATAN2: trx.Catatan2 || '',
+      LABEL_CATATAN1: toko.Label_Catatan1 || 'Catatan 1',
+      LABEL_CATATAN2: toko.Label_Catatan2 || 'Catatan 2',
+      TOTAL_ITEM: (trx.Items || []).reduce(function (s, it) { return s + Number(it.Qty || 0); }, 0) || (trx.Total_Item || 0)
     };
   }
 
@@ -451,6 +494,18 @@ const Printer = (function () {
     const bagian = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'numeric', year: 'numeric' }).formatToParts(d);
     const ambil = function (tipe) { const p = bagian.find(function (x) { return x.type === tipe; }); return p ? p.value : ''; };
     return ambil('day') + ' ' + bln[Number(ambil('month')) - 1] + ' ' + ambil('year');
+  }
+  // Format tanggal+jam ringkas gaya "dd-MM-yy HH:mm" (dipakai struk bergaya tracking
+  // pesanan, mis. "Tgl Pesan"/"Est Selesai" pada struk laundry). Dikunci WIB juga,
+  // dengan alasan sama seperti formatTglIndo().
+  function formatTglJamRingkas_(v) {
+    const d = v ? new Date(v) : new Date();
+    if (isNaN(d.getTime())) return String(v || '');
+    const bagian = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
+    }).formatToParts(d);
+    const ambil = function (tipe) { const p = bagian.find(function (x) { return x.type === tipe; }); return p ? p.value : ''; };
+    return ambil('day') + '-' + ambil('month') + '-' + ambil('year') + ' ' + ambil('hour') + ':' + ambil('minute');
   }
   function terapkanFilter_(nilai, mods) {
     let v = nilai, stop = false;
@@ -650,10 +705,16 @@ const Printer = (function () {
     return {
       ID_Transaksi: 'TRX-CONTOH', Tanggal_Waktu: new Date().toISOString(), Kasir: 'Owner', Metode_Bayar: 'Tunai',
       Items: [
-        { Nama_Produk: 'Nasi Lalap', Qty: 2, Harga_Satuan: 10000 },
-        { Nama_Produk: 'Es Teh Manis', Qty: 1, Harga_Satuan: 5000 }
+        { Nama_Produk: 'Nasi Lalap', Qty: 2, Satuan: 'Kg', Harga_Satuan: 10000 },
+        { Nama_Produk: 'Es Teh Manis', Qty: 1, Satuan: 'pcs', Harga_Satuan: 5000 }
       ],
-      Subtotal: 25000, Diskon: 0, Pajak: 2500, Total_Bayar: 27500, Diterima: 30000, Kembalian: 2500
+      Subtotal: 25000, Diskon: 0, Pajak: 2500, Total_Bayar: 27500, Diterima: 30000, Kembalian: 2500,
+      // Info tambahan opsional — contoh nilai supaya pratinjau memperlihatkan baris
+      // Pelanggan/Est Selesai/Catatan ketika preset/pengaturan memakainya.
+      Pelanggan: 'Pelanggan Contoh',
+      Estimasi_Selesai: formatTglJamRingkas_(new Date(Date.now() + 4 * 3600000)),
+      Catatan1: 'Lavender',
+      Catatan2: 'Tidak ada'
     };
   }
 
