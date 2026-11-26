@@ -159,8 +159,8 @@ const Printer = (function () {
     // permintaan pengguna, baris Bayar ditaruh di bawah, menyatu dengan
     // ringkasan_total (dekat TOTAL), bukan di dekat No. Struk/Tanggal/Kasir.
     if (type === 'info_transaksi') { b.noStruk = true; b.tanggal = true; b.kasir = true; }
-    if (type === 'daftar_item') { b.headerKolom = false; }
-    if (type === 'ringkasan_total') { b.totalBoxed = false; b.metode = true; b.bayarTunai = true; }
+    if (type === 'daftar_item') { b.headerKolom = false; b.gayaBaris = 'standar'; }
+    if (type === 'ringkasan_total') { b.totalBoxed = false; b.metode = true; b.bayarTunai = true; b.gayaMetode = 'label'; }
     return b;
   }
   function blokDefault() {
@@ -239,6 +239,27 @@ const Printer = (function () {
           INFO({ noStruk: false }), G('putus'), ITEM, G('putus'), TOTAL({ totalBoxed: true }), G('tebal'),
           T('Terima kasih, sampai jumpa lagi! 💛'),
           FOOTER(), QR
+        ]
+      },
+      // Meniru tata letak struk POS kasir modern (mis. Olsera/Moka): qty menyatu
+      // dengan nama barang (bukan baris terpisah), nominal item tanpa "Rp", label
+      // "Waktu"/nomor struk dengan tagar, dan metode bayar diulang dengan nominal.
+      {
+        id: 'cafe7', nama: 'Kasir POS Ringkas (Qty di Samping Nama)', kategori: 'cafe', blocks: [
+          JUDUL({ size: 'besar' }),
+          ALAMAT,
+          { type: 'spasi' },
+          T('Waktu : {{TANGGAL|tgl}} {{JAM}}', { align: 'L' }),
+          T('Kasir : {{KASIR}}', { align: 'L' }),
+          T('#{{NOTA}}', { align: 'L' }),
+          G('putus'),
+          T('DINE-IN', { bold: true }),
+          { type: 'daftar_item', gayaBaris: 'ringkas' },
+          G('putus'),
+          TOTAL({ metode: true, gayaMetode: 'kanal', bayarTunai: true }),
+          { type: 'spasi' },
+          FOOTER(),
+          T('Powered by KasirKu', { size: 'normal' })
         ]
       },
       // ---- TOKO SEMBAKO / MINIMARKET ----
@@ -329,7 +350,15 @@ const Printer = (function () {
       case 'daftar_item': {
         const baris = [];
         if (b.headerKolom) baris.push('[LR]Nama Barang||Jumlah', '[-]');
-        baris.push('{{#ITEM}}', '{{NAMA}}', '[LR]{{QTY}} x {{HARGA|rp}}||{{SUB|rp}}', '{{/ITEM}}');
+        baris.push('{{#ITEM}}');
+        if (b.gayaBaris === 'ringkas') {
+          // Satu baris per item: qty menyatu di depan nama (kiri), subtotal di kanan tanpa "Rp" —
+          // meniru gaya struk kasir POS modern (mis. Olsera, Moka, dll).
+          baris.push('[LR]{{QTY}} {{NAMA}}||{{SUB|angka}}');
+        } else {
+          baris.push('{{NAMA}}', '[LR]{{QTY}} x {{HARGA|rp}}||{{SUB|rp}}');
+        }
+        baris.push('{{/ITEM}}');
         return baris;
       }
       case 'ringkasan_total': {
@@ -337,7 +366,15 @@ const Printer = (function () {
           '{{?PAJAK}}[LR]Pajak||{{PAJAK|rp}}', '{{/PAJAK}}',
           '[B][H]' + (b.totalBoxed ? '[BOX]' : '') + '[LR]TOTAL||{{TOTAL|rp}}'];
         // Baris Bayar/Tunai/Kembalian ditaruh DI BAWAH, setelah TOTAL — bukan di atas dekat No. Struk.
-        if (b.metode) baris.push('[LR]Metode Bayar||{{METODE}}');
+        if (b.metode) {
+          if (b.gayaMetode === 'kanal') {
+            // Gaya "kanal pembayaran": nama metode jadi label, nominal total diulang di kanan
+            // (mis. "Qris    Rp 117.000") — meniru struk kasir POS modern.
+            baris.push('[LR]{{METODE}}||{{TOTAL|rp}}');
+          } else {
+            baris.push('[LR]Metode Bayar||{{METODE}}');
+          }
+        }
         if (b.bayarTunai) baris.push('{{?TUNAI}}[LR]Tunai||{{DITERIMA|rp}}', '[LR]Kembali||{{KEMBALI|rp}}', '{{/TUNAI}}');
         return baris;
       }
