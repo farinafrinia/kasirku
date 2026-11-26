@@ -386,7 +386,9 @@ const Printer = (function () {
       TOKO_WA: toko.No_Telepon || '',
       NOTA: trx.ID_Transaksi || '-',
       TANGGAL: tgl.toISOString(),
-      JAM: tgl.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+      // timeZone dikunci WIB supaya jam di struk SELALU sama persis dengan jam toko,
+      // berapa pun zona waktu perangkat yang dipakai mencetak (HP kasir, laptop, dll).
+      JAM: tgl.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }),
       KASIR: trx.Kasir || '-',
       METODE: trx.Metode_Bayar || 'Tunai',
       ITEM: (trx.Items || []).map(function (it) {
@@ -407,7 +409,11 @@ const Printer = (function () {
     const bln = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
     const d = v ? new Date(v) : new Date();
     if (isNaN(d.getTime())) return String(v || '');
-    return d.getDate() + ' ' + bln[d.getMonth()] + ' ' + d.getFullYear();
+    // Dibaca pakai komponen tanggal WIB (bukan getDate()/getMonth() lokal perangkat),
+    // supaya tanggal di struk tidak berubah walau perangkat pencetaknya beda zona waktu.
+    const bagian = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'numeric', year: 'numeric' }).formatToParts(d);
+    const ambil = function (tipe) { const p = bagian.find(function (x) { return x.type === tipe; }); return p ? p.value : ''; };
+    return ambil('day') + ' ' + bln[Number(ambil('month')) - 1] + ' ' + ambil('year');
   }
   function terapkanFilter_(nilai, mods) {
     let v = nilai, stop = false;
